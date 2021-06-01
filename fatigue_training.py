@@ -32,6 +32,7 @@ def process_subjects_data(subjects_trials_data):
 
 
 def plot_acc_and_loss(history, subject_id=None, save_piture=False):
+    plt.subplot(211)
     plt.plot(history.history['accuracy'])
     plt.plot(history.history['val_accuracy'])
     plt.title(subject_id + ':model accuracy')
@@ -51,21 +52,19 @@ def plot_acc_and_loss(history, subject_id=None, save_piture=False):
         plt.savefig("./train_weight/acc/" + subject_id + "_acc_loss.png")
     plt.close()
 
-
 loader = DatasetLoader()
-subject_ids = loader.get_subject_ids()
-output = {}
 subjects_trials_data, reformatted_data = loader.load_data(data_type="rest", feature_type="time",
-                                                          # single_subject=subject_id,
-                                                          fatigue_basis="by_time",
+                                                          # single_subject="c95ccy",
+                                                          fatigue_basis="by_feedback",
                                                           # selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"]
                                                           )
 
-eeg_data, eeg_label = process_subjects_data(subjects_trials_data)
-eeg_label = to_categorical(eeg_label)
+# eeg_data, eeg_label = process_subjects_data(subjects_trials_data)
+# eeg_label = to_categorical(eeg_label)
 
-x_train, y_train = reformatted_data['train_x'][0], reformatted_data['train_y'][0]
-x_test, y_test = reformatted_data['valid_x'][0], reformatted_data['valid_y'][0]
+x_train, y_train = reformatted_data['train_x'], reformatted_data['train_y'] # shuffle
+x_test, y_test = reformatted_data['valid_x'], reformatted_data['valid_y']
+
 y_train, y_test = to_categorical(y_train), to_categorical(y_test)
 chans, samples, kernels = x_train.shape[2], x_train.shape[1], 1
 x_train = x_train.reshape((x_train.shape[0], chans, samples, kernels))
@@ -92,4 +91,6 @@ model.save('fatigue_predict.h5')
 print('best accuracy:%.3f' % max(fittedModel.history["val_accuracy"]))
 print('best loss:%.3f' % min(fittedModel.history["val_loss"]))
 
-plot_acc_and_loss(fittedModel, save_piture=True)
+plot_acc_and_loss(fittedModel, subject_id='all', save_piture=True)
+
+a=0

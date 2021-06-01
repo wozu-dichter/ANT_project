@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from train_model import plot_acc_val
 from tensorflow.keras import optimizers
 
+
 def plot_dataset_X(dataset_X, figure_name):
     cols = dataset_X.shape[2]
     plt.figure(figure_name, figsize=(16, 16))
@@ -18,10 +19,10 @@ def plot_dataset_X(dataset_X, figure_name):
         plt.subplot(cols, 1, i + 1)
         # plt.title('Signal_' + str(i))
         # plt.yticks(dataset_X[:, :, i], x)
-        time = np.linspace(0, 5, 101)
-        freq = np.linspace(5, 28, 26)
+        time = np.linspace(0, 5, 104)
+        freq = np.linspace(3, 28, 25)
         plt.pcolormesh(time, freq, dataset_X[:, :, i], shading="auto", vmin=0, vmax=0.1)
-        plt.title(["C3", "C4", "P3", "Pz", "P4", "Oz"][i])
+        plt.title(["P3", "Pz", "P4", "Oz", "O1", 'O2'][i])
         plt.tight_layout()
     plt.ylabel('Frequency [Hz]')
     plt.xlabel('Time [sec]')
@@ -42,9 +43,10 @@ def process_subjects_data(subjects_trials_data):
             if index['fatigue_level'] == 'high':
                 eeg_data.append(subject_array)  # tired
                 eeg_label.append(0)
-                stft_data = subject_array[:, :, [6, 8, 10, 11, 12, 15]]  # C3, C4, P3, Pz, P4, Oz
+                stft_data = subject_array[:, :,
+                            [10, 11, 12, 15, 30, 31]]  # C3, C4, P3, Pz, P4, Oz -> P3, Pz, P4, Oz ,O1,O2
 
-                # plot_dataset_X(stft_data, figure_name=key + "/" + key + "_high_" + str(high_num))
+                plot_dataset_X(stft_data, figure_name=key + "/" + key + "_high_" + str(high_num))
                 high_num += 1
 
             elif index['fatigue_level'] == 'low':
@@ -52,7 +54,7 @@ def process_subjects_data(subjects_trials_data):
                 eeg_label.append(1)
                 stft_data = subject_array[:, :, [6, 8, 10, 11, 12, 15]]
 
-                # plot_dataset_X(stft_data, figure_name=key + "/" + key + "_low_" + str(low_num))
+                plot_dataset_X(stft_data, figure_name=key + "/" + key + "_low_" + str(low_num))
                 low_num += 1
 
     eeg_data = np.array(eeg_data)
@@ -117,4 +119,4 @@ model.compile(loss='categorical_crossentropy', optimizer=opt,
 fittedModel = model.fit(x_train, y_train, batch_size=200, epochs=200,
                         verbose=1, validation_data=(x_test, y_test), callbacks=my_callbacks)
 
-a=0
+a = 0

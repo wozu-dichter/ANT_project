@@ -89,7 +89,7 @@ output = {}
 for subject_id in subject_ids:
     subjects_trials_data, reformatted_data = loader.load_data(data_type="rest", feature_type="time",
                                                               # single_subject=subject_id,
-                                                              fatigue_basis="by_time",
+                                                              fatigue_basis="by_feedback",   #by_time
                                                               # selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"]
                                                               )
 
@@ -99,6 +99,7 @@ for subject_id in subject_ids:
     x_train, y_train  = reformatted_data['train_x'][0], reformatted_data['train_y'][0]
     x_test, y_test = reformatted_data['valid_x'][0], reformatted_data['valid_y'][0]
     y_train, y_test =to_categorical(y_train), to_categorical(y_test)
+
     chans, samples, kernels = x_train.shape[2], x_train.shape[1], 1
     x_train = x_train.reshape((x_train.shape[0], chans, samples, kernels))
     x_test = x_test.reshape((x_test.shape[0], chans, samples, kernels))

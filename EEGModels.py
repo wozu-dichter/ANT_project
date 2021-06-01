@@ -42,7 +42,7 @@
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Activation, Permute, Dropout
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, AveragePooling2D
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, AveragePooling2D, GlobalAveragePooling2D
 from tensorflow.keras.layers import SeparableConv2D, DepthwiseConv2D
 from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.layers import SpatialDropout2D
@@ -51,6 +51,33 @@ from tensorflow.keras.layers import Input, Flatten
 from tensorflow.keras.constraints import max_norm
 from tensorflow.keras import backend as K
 
+def call_cnn_model():
+    inputs = Input(shape=(40, 1, 32))
+    x = Conv2D(filters=128, kernel_size=5, activation="relu", padding="same")(inputs)
+    # x = MaxPool2D(pool_size=(16, 16))(x)
+    x = BatchNormalization()(x)
+
+    x = Conv2D(filters=128, kernel_size=5, activation="relu", padding="same")(x)
+    # x = MaxPool2D(pool_size=(16, 16))(x)
+    x = BatchNormalization()(x)
+
+    x = Conv2D(filters=128, kernel_size=5, activation="relu", padding="same")(x)
+    # x = MaxPool2D(pool_size=(16, 16))(x)
+    x = BatchNormalization()(x)
+
+    x = Conv2D(filters=256, kernel_size=5, activation="relu", padding="same")(x)
+    # x = MaxPool2D(pool_size=(16, 16))(x)
+    x = BatchNormalization()(x)
+
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(units=256, activation="relu")(x)
+    x = Dropout(0.5)(x)
+
+    outputs = Dense(units=2, activation="softmax")(x)
+
+    # Define the model.
+    cnn = Model(inputs, outputs, name="2Dcnn")
+    return cnn
 
 def EEGNet_TINA_TEST(nb_classes, Chans=64, Samples=128,
            dropoutRate=0.5, kernLength=64, F1=8,

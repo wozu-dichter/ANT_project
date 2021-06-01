@@ -10,18 +10,14 @@ import matplotlib.pyplot as plt
 from glob import glob
 from termcolor import cprint
 from tqdm import tqdm
-from scipy.signal import stft, butter, sosfilt
+from scipy.signal import stft, butter, sosfilt, filtfilt
 
 
 class DatasetLoader:
     def __init__(self):
         # fixed parameters
         # NO NEED TO MODIFY
-        self.dataset_dir = "./dataset"
         self.figures_dir = "./figures"
-        self.sample_rate = 500  # sample point
-        self.channel_orders = {"Fp1": 0, "Fp2": 1, "F3": 2, "Fz": 3, "F4": 4, "T7": 5, "C3": 6, "Cz": 7,
-                               "C4": 8, "T8": 9, "P3": 10, "Pz": 11, "P4": 12, "P7": 13, "P8": 14, "Oz": 15}
         self.__init_settings()
 
         # parameters initialization
@@ -32,6 +28,16 @@ class DatasetLoader:
         self.subjects_fatigue_levels = None
         self.subjects_trials_data = None
         self.reformatted_data = None
+        self.selected_channels = None
+
+        # # optional and preprocessing parameters
+        self.dataset_dir = "./dataset2"
+        self.num_channels = 32
+        self.sample_rate = 512  # sample point
+        self.channel_orders = {"Fp1": 0, "Fp2": 1, "F3": 2, "Fz": 3, "F4": 4, "T7": 5, "C3": 6, "Cz": 7,
+                               "C4": 8, "T8": 9, "P3": 10, "Pz": 11, "P4": 12, "P7": 13, "P8": 14, "Oz": 15,
+                               "AF3": 16, "AF4": 17, "F7": 18, "F8": 19, "FT7": 20, "FC3": 21, "FCz": 22, "FC4": 23,
+                               "FT8": 24, "TP7": 25, "CP3": 26, "CPz": 27, "CP4": 28, "TP8": 29, "O1": 30, "O2": 31}
 
         # # optional and preprocessing parameters
         # save RT boxplot or not
@@ -51,13 +57,14 @@ class DatasetLoader:
         # parameters for normalization method
         self.apply_signal_normalization = True
         self.normalization_mode = "min_max"
-
         # parameters for RT outlier filtering, unit in percentage
         self.apply_rt_thresholding = True
         self.rt_filtration_rate = 0.05
 
         # parameters for Butterworth bandpass filter
         self.apply_bandpass_filter = True
+        self.bandpass_visualize = False
+        self.bandpass_filter_type = "filtfilt"
         self.bandpass_filter_order = 1
         self.bandpass_low_cut = 5
         self.bandpass_high_cut = 28
@@ -74,27 +81,56 @@ class DatasetLoader:
         plt.ion()
         create_dir(self.figures_dir)
 
-    def load_data(self, data_type, feature_type, fatigue_basis="by_feedback", excluded_subjects=None,
-                  single_subject="all", selected_channels=None):
-        available_data_types = ["session", "rest"]
-        assert data_type in available_data_types, "data_type must be one of {}".format(available_data_types)
+    def load_data(self, data_type, feature_type, fatigue_basis="by_feedback", single_subject="all", excluded_subjects=None, selected_channels=None):
+        self.__parameter_check(data_type, feature_type, fatigue_basis, single_subject, excluded_subjects, selected_channels)
+
         self.data_type = data_type
-
-        available_feature_types = ["time", "stft", "wavelet"]
-        assert feature_type in available_feature_types, "feature_type must be one of {}".format(available_feature_types)
         self.feature_type = feature_type
-
-        if single_subject != "all" and bool(excluded_subjects):
-            print_warning(
-                "excluded_subjects and single_subject are given at the same time, excluded_subjects may be unnecessary.")
+        self.selected_channels = selected_channels
 
         self.__get_npy_file_paths(excluded_subjects, single_subject, fatigue_basis)
-        self.__load_trials_data(selected_channels)
+        self.__load_trials_data()
         self.__trials_data_preprocessing()
-        self.__time_frequency_analysis()
         self.__data_reformat()
 
         return self.subjects_trials_data, self.reformatted_data
+
+    def __parameter_check(self, data_type, feature_type, fatigue_basis, single_subject, excluded_subjects, selected_channels):
+        # parameters in self.__init__:----------------------------------------------------------------------------------------------------------------
+        # check normalization_mode
+        available_normalization_modes = ["min_max", "z_score", "mean_norm"]
+        assert self.normalization_mode in available_normalization_modes, "normalization_mode must be one of {}".format(available_normalization_modes)
+
+        # parameters in self.load_data:---------------------------------------------------------------------------------------------------------------
+        # check data_type
+        available_data_types = ["session", "rest"]
+        assert data_type in available_data_types, "data_type must be one of {}".format(available_data_types)
+
+        # check feature_type
+        available_feature_types = ["time", "stft", "wavelet"]
+        assert feature_type in available_feature_types, "feature_type must be one of {}".format(available_feature_types)
+
+        # check fatigue_basis
+        available_fatigue_basis = ["by_feedback", "by_time"]
+        assert fatigue_basis in available_fatigue_basis, "fatigue_basis must be one of {}".format(available_fatigue_basis)
+
+        # check single_subject
+        available_subjects = self.get_subject_ids() + ["all"]
+        assert single_subject in available_subjects, "single_subject must be one of {}".format(available_subjects)
+
+        # check excluded_subjects
+        if excluded_subjects:
+            for subject in excluded_subjects:
+                assert subject in self.get_subject_ids(), "unknown subject : {}".format(subject)
+
+        # check selected_channels
+        if selected_channels:
+            for channel in selected_channels:
+                assert channel in self.channel_orders.keys(), "unknown channel : {}".format(channel)
+
+        # warning
+        if single_subject != "all" and bool(excluded_subjects):
+            print_warning("excluded_subjects and single_subject are given at the same time, excluded_subjects may be unnecessary.")
 
     def __get_npy_file_paths(self, excluded_subjects, single_subject, fatigue_basis):
         self.subjects_npy_paths = {}
@@ -121,21 +157,21 @@ class DatasetLoader:
             self.subjects_npy_paths[subject_id] = custom_sort(subject_npy_paths)
             self.subjects_fatigue_levels[subject_id] = subject_fatigue_levels
 
-    def __load_trials_data(self, selected_channels):
-        if not selected_channels:
-            channel_ids = list(self.channel_orders.values())
+    def __load_trials_data(self):
+        if self.selected_channels:
+            channel_ids = [self.channel_orders[channel_name] for channel_name in self.selected_channels]
         else:
-            channel_ids = [self.channel_orders[channel_name] for channel_name in selected_channels]
+            self.selected_channels = list(self.channel_orders.keys())[:self.num_channels]
+            channel_ids = list(self.channel_orders.values())[:self.num_channels]
         desired_channel_num = len(channel_ids)
 
         self.subjects_trials_data = {}
         for nth_subject, (subject_id, npy_paths) in enumerate(self.subjects_npy_paths.items()):
             self.subjects_trials_data[subject_id] = []
-            prefix = "Loading npy files, {}, {} / {}".format(subject_id, nth_subject + 1, len(self.subjects_npy_paths))
-            for nth_npy, npy_path in enumerate(tqdm_info(npy_paths, prefix=prefix)):
+            progressbar_prefix = "Loading npy files, {}, {}/{}".format(subject_id, nth_subject + 1, len(self.subjects_npy_paths))
+            for nth_npy, npy_path in enumerate(tqdm_info(npy_paths, prefix=progressbar_prefix)):
                 npy_data = load_npy(npy_path)
-                raw_eeg = npy_data["eeg"]
-                raw_eeg = raw_eeg[:, :, channel_ids]
+                raw_eeg = npy_data["eeg"][:, :, channel_ids]
 
                 if self.data_type == "session":
                     multi_trial_data = npy_data["multiTrialData"]
@@ -157,7 +193,7 @@ class DatasetLoader:
                         self.subjects_trials_data[subject_id].append(trial_data)
 
     def __trials_data_preprocessing(self):
-
+        tic = time.time()
         for nth_subject, (subject_id, trials_data) in enumerate(self.subjects_trials_data.items()):
             if self.apply_signal_normalization:
                 self.__signal_normalization(subject_id)
@@ -169,6 +205,9 @@ class DatasetLoader:
                 self.__bandpass_filter(subject_id)
 
         # self.__rt_distribution_balance()
+        self.__time_frequency_analysis()
+
+        print_info("Total time spent on data preprocessing: {:.2f} seconds".format(time.time() - tic))
 
     def __rt_distribution_balance(self, rt_distribution_visualize=True):
 
@@ -216,10 +255,15 @@ class DatasetLoader:
                 x = x[random_idx]
                 y = y[random_idx]
 
-            self.reformatted_data["train_x"].append(x[num_valid:])
-            self.reformatted_data["train_y"].append(y[num_valid:])
-            self.reformatted_data["valid_x"].append(x[:num_valid])
-            self.reformatted_data["valid_y"].append(y[:num_valid])
+            self.reformatted_data["train_x"].extend(x[num_valid:])
+            self.reformatted_data["train_y"].extend(y[num_valid:])
+            self.reformatted_data["valid_x"].extend(x[:num_valid])
+            self.reformatted_data["valid_y"].extend(y[:num_valid])
+
+        self.reformatted_data["train_x"] = np.array(self.reformatted_data["train_x"])
+        self.reformatted_data["train_y"] = np.array(self.reformatted_data["train_y"])
+        self.reformatted_data["valid_x"] = np.array(self.reformatted_data["valid_x"])
+        self.reformatted_data["valid_y"] = np.array(self.reformatted_data["valid_y"])
 
     def __get_processed_x(self, trials_data):
         x = None
@@ -230,8 +274,7 @@ class DatasetLoader:
                                self.session_signal_end * self.sample_rate, :]
                               for trial_data in trials_data])
             elif self.data_type == "rest":
-                x = np.array(
-                    [trial_data["eeg"] for trial_data in trials_data if trial_data["fatigue_level"] in ["high", "low"]])
+                x = np.array([trial_data["eeg"] for trial_data in trials_data if trial_data["fatigue_level"] in ["high", "low"]])
         elif self.feature_type == "stft":
             x = np.array([trial_data["stft_spectrum"] for trial_data in trials_data])
 
@@ -253,9 +296,6 @@ class DatasetLoader:
         return y
 
     def __signal_normalization(self, subject_id):
-        available_normalization_modes = ["min_max", "z_score", "mean_norm"]
-        assert self.normalization_mode in available_normalization_modes, "normalization_mode must be one of {}".format(
-            available_normalization_modes)
 
         print_info("Applying signal normalization, {}".format(subject_id))
         filtered_trials = []
@@ -285,8 +325,7 @@ class DatasetLoader:
         sorted_subject_rts = sorted([d["responseTime"] for d in trials_data])
         rt_min_threshold = sorted_subject_rts[int(len(sorted_subject_rts) * self.rt_filtration_rate)]
         rt_max_threshold = sorted_subject_rts[int(len(sorted_subject_rts) * (1 - self.rt_filtration_rate))]
-        filtered_trials = [trial_data for trial_data in trials_data if
-                           rt_min_threshold <= trial_data["responseTime"] <= rt_max_threshold]
+        filtered_trials = [trial_data for trial_data in trials_data if rt_min_threshold <= trial_data["responseTime"] <= rt_max_threshold]
         self.subjects_trials_data[subject_id] = filtered_trials
 
         if save_box_plot:
@@ -295,40 +334,68 @@ class DatasetLoader:
     def __rt_normalization(self, subject_id):
         print_info("Applying RT normalization, {}".format(subject_id))
 
-        trials_data = self.subjects_trials_data[subject_id]
         rts = {"Congruent": [], "Incongruent": [], "noTarget": []}
-        for trial_data in trials_data:
+        for trial_data in self.subjects_trials_data[subject_id]:
             gt = trial_data["groundTruth"]
             rt = trial_data["responseTime"]
             rts[gt].append(rt)
 
-        for trial_data in trials_data:
+        for trial_data in self.subjects_trials_data[subject_id]:
             rt_min_value = min(rts[trial_data["groundTruth"]])
             rt_max_value = max(rts[trial_data["groundTruth"]])
             trial_data["normalized_rt"] = (trial_data["responseTime"] - rt_min_value) / (rt_max_value - rt_min_value)
 
     def __bandpass_filter(self, subject_id):
-        prefix = "Applying bandpass filter, {}".format(subject_id)
+        progressbar_prefix = "Applying bandpass filter, {}".format(subject_id)
 
-        trials_data = self.subjects_trials_data[subject_id]
-        for nth_trial, trial_data in enumerate(tqdm_info(trials_data, prefix=prefix)):
+        if self.bandpass_filter_type == "sosfilt":
+            bandpass_filter_function = butter_bandpass_filter_sosfilt
+        elif self.bandpass_filter_type == "filtfilt":
+            bandpass_filter_function = butter_bandpass_filter_filtfilt
+        else:
+            bandpass_filter_function = None
+
+        for nth_trial, trial_data in enumerate(tqdm_info(self.subjects_trials_data[subject_id], prefix=progressbar_prefix)):
             signal_multi_channel = []
             for signal_single_channel in trial_data["eeg"].T:
-                filtered_signal_copied = butter_bandpass_filter(data=copy_signal(signal_single_channel),
-                                                                low_cut=self.bandpass_low_cut,
-                                                                high_cut=self.bandpass_high_cut,
-                                                                fs=self.sample_rate,
-                                                                order=self.bandpass_filter_order)
+                filtered_signal_copied = bandpass_filter_function(data=signal_sticking(signal_single_channel),
+                                                                  low_cut=self.bandpass_low_cut,
+                                                                  high_cut=self.bandpass_high_cut,
+                                                                  fs=self.sample_rate,
+                                                                  order=self.bandpass_filter_order)
                 start = int(len(filtered_signal_copied) * (1 / 3))
                 end = int(len(filtered_signal_copied) * (2 / 3))
                 filtered_signal = filtered_signal_copied[start:end]
                 signal_multi_channel.append(filtered_signal)
+
+            if self.bandpass_visualize:
+                num_channels = len(signal_multi_channel)
+                raw_eeg_mc = trial_data["eeg"].T
+                filtered_eeg_mc = np.array(signal_multi_channel)
+
+                plt.figure("bandpass filter")
+                plt.clf()
+                plt_show_full_screen()
+                # plt.subplots_adjust(hspace=2)
+
+                for i, (channel_id, raw_eeg_sc, filtered_eeg_sc) in enumerate(zip(self.selected_channels, raw_eeg_mc, filtered_eeg_mc)):
+                    plt.subplot(num_channels, 2, i * 2 + 1)
+                    plt.plot(raw_eeg_sc)
+                    plt.ylabel(channel_id, rotation=0, labelpad=20)
+                    plt.yticks([])
+
+                    plt.subplot(num_channels, 2, i * 2 + 2)
+                    plt.plot(filtered_eeg_sc)
+                    plt.ylabel(channel_id, rotation=0, labelpad=20)
+                    plt.yticks([])
+
+                plt.waitforbuttonpress()
+
             trial_data["eeg"] = np.array(signal_multi_channel).T
 
     def __save_rt_box_plot(self, subject_id, state):
-        trials_data = self.subjects_trials_data[subject_id]
         rts = {"Congruent": [], "Incongruent": [], "noTarget": []}
-        for trial_data in trials_data:
+        for trial_data in self.subjects_trials_data[subject_id]:
             gt = trial_data["groundTruth"]
             rt = trial_data["responseTime"]
             rts[gt].append(rt)
@@ -354,8 +421,8 @@ class DatasetLoader:
 
     def __calculate_stft_spectrum(self):
         for subject_id, trials_data in self.subjects_trials_data.items():
-            prefix = "Calculating STFT spectrum, {}".format(subject_id)
-            for trial_data in tqdm_info(trials_data, prefix=prefix):
+            progressbar_prefix = "Calculating STFT spectrum, {}".format(subject_id)
+            for trial_data in tqdm_info(trials_data, prefix=progressbar_prefix):
                 spectrum = []
                 for signal_single_channel in trial_data["eeg"].T:
                     if self.data_type == "session":
@@ -398,7 +465,7 @@ def print_info(string):
 
 
 def print_warning(string):
-    printf("[WARNING] {}".format(string), color="yellow")
+    printf("[WARNING] {}".format(string), color="yellow", attrs=["bold"])
 
 
 def printf(string, color="yellow", on_color=None, attrs=None, **kwargs):
@@ -416,8 +483,7 @@ def printf(string, color="yellow", on_color=None, attrs=None, **kwargs):
         return
 
     available_colors = ["grey", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "random"]
-    available_on_colors = ["on_grey", "on_red", "on_green", "on_yellow", "on_blue", "on_magenta", "on_cyan", "on_white",
-                           None]
+    available_on_colors = ["on_grey", "on_red", "on_green", "on_yellow", "on_blue", "on_magenta", "on_cyan", "on_white", None]
 
     assert color in available_colors, "color must be in {}".format(available_colors)
     assert on_color in available_on_colors, "on_color must be in {}".format(available_on_colors)
@@ -497,7 +563,7 @@ def sigmoid(x, x_scale, x_shift):
     return 1 / (1 + math.exp(-x_scale * (x - x_shift)))
 
 
-def copy_signal(sig):
+def signal_sticking(sig):
     left = sig[0]
     right = sig[-1]
     left_sig = sig - (right - left)
@@ -505,29 +571,39 @@ def copy_signal(sig):
     return np.concatenate([left_sig, sig, right_sig], axis=0)
 
 
-def butter_bandpass(low_cut, high_cut, fs, order=5):
+def butter_bandpass_filter_sosfilt(data, low_cut, high_cut, fs, order=5):
     nyq = 0.5 * fs
     low = low_cut / nyq
     high = high_cut / nyq
-    sos = butter(order, [low, high], analog=False, btype="band", output="sos")
-    return sos
-
-
-def butter_bandpass_filter(data, low_cut, high_cut, fs, order=5):
-    sos = butter_bandpass(low_cut, high_cut, fs, order=order)
+    sos = butter(order, [low, high], btype="bandpass", output="sos")
     y = sosfilt(sos, data)
     return y
 
 
+def butter_bandpass_filter_filtfilt(data, low_cut, high_cut, fs, order=5):
+    wn1 = 2 * low_cut / fs
+    wn2 = 2 * high_cut / fs
+    [b, a] = butter(order, [wn1, wn2], btype="bandpass", output="ba")
+    y = filtfilt(b, a, data)
+    return y
+
+
 def tqdm_info(i, prefix=""):
-    time.sleep(0.01)
+    time.sleep(0.1)
     prefix = "[INFO] " + prefix
     return tqdm(i, desc=prefix)
 
 
+def plt_show_full_screen():
+    # this function must be called before plt.show()
+    mng = plt.get_current_fig_manager()
+    mng.resize(*mng.window.maxsize())
+
+
 if __name__ == "__main__":
     loader = DatasetLoader()
-    subjects_trials_data, reformatted_data = loader.load_data(data_type="rest", feature_type="time",
-                                                              single_subject="c95ths",
-                                                              selected_channels=["C3", "Cz", "C4"])
-    print("Finished")
+    subjects_trials_data, reformatted_data = loader.load_data(data_type="session",
+                                                              feature_type="time",
+                                                              # selected_channels=["C3", "Cz", "C4"],
+                                                              )
+    print("Done")

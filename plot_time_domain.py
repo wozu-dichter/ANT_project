@@ -4,20 +4,28 @@ from matplotlib import pyplot as plt
 from scipy import signal
 from numpy import argmax
 
-#plot time domain data
+
+# plot time domain data
 
 def plot_dataset_X(dataset_X, figure_name):
     pick_chaneel = np.array([6, 8, 10, 11, 12, 15])
     time_domaim = dataset_X[pick_chaneel, :]  # C3, C4, P3, Pz, P4, Oz
-    eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7",
-                   "C3", "Cz", "C4", "T8", "P3", "Pz", "P4", "P7", "P8", "Oz"]
+    # eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7",
+    #                "C3", "Cz", "C4", "T8", "P3", "Pz", "P4", "P7", "P8", "Oz"]
+    eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
+                   "C4", "T8", "P3", "Pz", "P4", "P7", "P8", "Oz",
+                   "AF3", "AF4", "F7", "F8", "FT7", "FC3", "FCz", "FC4",
+                   "FT8", "TP7", "CP3", "CPz", "CP4", "TP8", "O1", "O2"]
     rows = pick_chaneel.shape[0]
-    time = np.linspace(0, 5, 2500)
+    time = np.linspace(0, 5, 512*5)
     fig = plt.figure(figure_name, figsize=(20, 16))
-    for i in range(rows):
-        plt.subplot(rows, 1, i + 1)
-        plt.title(eeg_channel[pick_chaneel[i]], fontsize=10)
-        plt.plot(time, time_domaim[i, :])
+    for i in range(32):
+        print(i)
+        plt.subplot(16, 2, i + 1)
+        # plt.title(eeg_channel[pick_chaneel[i]], fontsize=10)
+        plt.title(eeg_channel[i], fontsize=10)
+        # plt.plot(time, time_domaim[i, :])
+        plt.plot(time, dataset_X[i, :])
         plt.tight_layout()
     plt.xlabel('Time (Hz)')
     plt.savefig("./train_weight/time_domain/" + figure_name + ".png")
@@ -26,9 +34,10 @@ def plot_dataset_X(dataset_X, figure_name):
 
 if __name__ == '__main__':
     loader = DatasetLoader()
+    loader.rest_signal_len = 5
     subject_ids = loader.get_subject_ids()
     for subject_id in subject_ids:
-        subjects_trials_data = loader.load_data(data_type="rest", feature_type="time",
+        subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="time",
                                                 single_subject=subject_id,
                                                 fatigue_basis="by_time")
 

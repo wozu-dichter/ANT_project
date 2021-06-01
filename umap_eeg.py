@@ -87,11 +87,12 @@ for subject_id in subject_ids:
     subjects_trials_data, reformatted_data = loader.load_data(data_type="rest", feature_type="time",
                                                               single_subject=subject_id,
                                                               fatigue_basis="by_time",
-                                                              selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"])
+                                                              selected_channels=["O1", "O2", "P3", "Pz", "P4", "Oz"]
+                                                              )
     # eeg_data, eeg_label = process_subjects_data(subjects_trials_data)
     # eeg_label = to_categorical(eeg_label)
-    x_train, y_train = reformatted_data['train_x'][0], reformatted_data['train_y'][0]
-    x_test, y_test = reformatted_data['valid_x'][0], reformatted_data['valid_y'][0]
+    x_train, y_train = reformatted_data['train_x'], reformatted_data['train_y']
+    x_test, y_test = reformatted_data['valid_x'], reformatted_data['valid_y']
     # y_train, y_test = to_categorical(y_train), to_categorical(y_test)
     """
     opt = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
@@ -121,7 +122,6 @@ for subject_id in subject_ids:
     plt.scatter(embedding[np.where(umap_label == 0), 0][0],
                 embedding[np.where(umap_label == 0), 1][0],
                 c="b", s=5, label='train good')
-
 
     plt.gca().set_aspect('equal', 'datalim')
     plt.legend()
