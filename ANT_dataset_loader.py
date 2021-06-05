@@ -55,14 +55,14 @@ class DatasetLoader:
         self.session_signal_end = 4
 
         # parameters for normalization method
-        self.apply_signal_normalization = True
+        self.apply_signal_normalization = False
         self.normalization_mode = "min_max"
         # parameters for RT outlier filtering, unit in percentage
         self.apply_rt_thresholding = True
         self.rt_filtration_rate = 0.05
 
         # parameters for Butterworth bandpass filter
-        self.apply_bandpass_filter = True
+        self.apply_bandpass_filter = False
         self.bandpass_visualize = False
         self.bandpass_filter_type = "filtfilt"
         self.bandpass_filter_order = 1
