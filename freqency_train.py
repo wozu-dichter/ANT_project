@@ -64,7 +64,7 @@ def process_subjects_data(subjects_trials_data):
 
 
 def call_cnn_model():
-    inputs = Input(shape=(26, 101, 16))
+    inputs = Input(shape=(25, 82, 32))
     x = Conv2D(filters=128, kernel_size=5, activation="relu", padding="same")(inputs)
     # x = MaxPool2D(pool_size=(16, 16))(x)
     x = BatchNormalization()(x)
@@ -91,32 +91,32 @@ def call_cnn_model():
     cnn = Model(inputs, outputs, name="2Dcnn")
     return cnn
 
+if __name__ == '__main__':
+    loader = DatasetLoader()
+    subjects_trials_data, _ = loader.load_data("rest", "stft")
 
-loader = DatasetLoader()
-subjects_trials_data, _ = loader.load_data("rest", "stft")
+    eeg_data, eeg_label = process_subjects_data(subjects_trials_data)
+    eeg_label = to_categorical(eeg_label)
 
-eeg_data, eeg_label = process_subjects_data(subjects_trials_data)
-eeg_label = to_categorical(eeg_label)
+    np.save('eeg_data_freq.npy', eeg_data)
+    np.save('eeg_label_freq.npy', eeg_label)
 
-np.save('eeg_data_freq.npy', eeg_data)
-np.save('eeg_label_freq.npy', eeg_label)
+    # eeg_data = np.load('eeg_data_freq.npy')
+    # eeg_label = np.load('eeg_label_freq.npy')
 
-# eeg_data = np.load('eeg_data_freq.npy')
-# eeg_label = np.load('eeg_label_freq.npy')
+    model = call_cnn_model()
+    model.summary()
 
-model = call_cnn_model()
-model.summary()
+    customCallback = plot_acc_val()
+    my_callbacks = [EarlyStopping(monitor="val_loss", patience=100),
+                    ModelCheckpoint(
+                        filepath="./train_weight/weights.hdf5",
+                        save_best_only=True, verbose=1), customCallback]
+    x_train, x_test, y_train, y_test = train_test_split(eeg_data, eeg_label, test_size=0.1)
+    opt = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+    model.compile(loss='categorical_crossentropy', optimizer=opt,
+                  metrics=['accuracy'])
+    fittedModel = model.fit(x_train, y_train, batch_size=200, epochs=200,
+                            verbose=1, validation_data=(x_test, y_test), callbacks=my_callbacks)
 
-customCallback = plot_acc_val()
-my_callbacks = [EarlyStopping(monitor="val_loss", patience=100),
-                ModelCheckpoint(
-                    filepath="./train_weight/weights.hdf5",
-                    save_best_only=True, verbose=1), customCallback]
-x_train, x_test, y_train, y_test = train_test_split(eeg_data, eeg_label, test_size=0.1)
-opt = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
-model.compile(loss='categorical_crossentropy', optimizer=opt,
-              metrics=['accuracy'])
-fittedModel = model.fit(x_train, y_train, batch_size=200, epochs=200,
-                        verbose=1, validation_data=(x_test, y_test), callbacks=my_callbacks)
-
-a = 0
+    a = 0

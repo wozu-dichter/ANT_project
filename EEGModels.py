@@ -52,7 +52,7 @@ from tensorflow.keras.constraints import max_norm
 from tensorflow.keras import backend as K
 
 def call_cnn_model():
-    inputs = Input(shape=(40, 1, 32))
+    inputs = Input(shape=(149, 1, 32))
     x = Conv2D(filters=128, kernel_size=5, activation="relu", padding="same")(inputs)
     # x = MaxPool2D(pool_size=(16, 16))(x)
     x = BatchNormalization()(x)

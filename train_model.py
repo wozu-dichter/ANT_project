@@ -61,7 +61,7 @@ class plot_acc_val(Callback):
         pass
 
 
-def plot_confusion_matrix(cnf_matrix, classes, epoch, normalize=True):
+def plot_confusion_matrix(cnf_matrix, classes, epoch, normalize=False):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -90,10 +90,10 @@ def plot_confusion_matrix(cnf_matrix, classes, epoch, normalize=True):
     plt.xlabel('Predicted label')
     plt.tight_layout()
     plt.pause(0.01)
-    plt.savefig('output/confusion_matrix.png')
+    plt.savefig('./train_weight/confusion_matrix/confusion_matrix.png')
 
 class ConfusionMatrix(Callback):
-    def __init__(self, x_val, y_val, classes, normalize=False):
+    def __init__(self, x_val, y_val, classes, normalize=True):
         super().__init__()
         self.x_val = x_val
         self.y_val = y_val
@@ -105,8 +105,9 @@ class ConfusionMatrix(Callback):
         y_pred = np.argmax(pred, axis=1)
         y_true = np.argmax(self.y_val, axis=1)
         [tn, fp], [fn, tp] = confusion_matrix(y_true, y_pred)
-        self.classes = ['left hand', 'right hand']
-        plot_confusion_matrix(cnf_matrix=[[tn, fp], [fn, tp]], classes=self.classes, epoch=epoch, normalize=False)
+        self.classes = ['Vigorous', 'fatigue']
+        plot_confusion_matrix(cnf_matrix=[[tn, fp], [fn, tp]],
+                              classes=self.classes, epoch=epoch, normalize=True)
 
 
 # def get_preprocessing_eeg_data(path, set_folder, seg_length):
