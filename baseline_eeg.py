@@ -125,16 +125,16 @@ def plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num):
         plt.clf()
 
 
-def process_subjects_data(subjects_trials_data, baseline_eeg, i_index, get_middle_value=True):
+def process_subjects_data(subjects_trials_data, baseline_eeg_all, i_index, get_middle_value=True):
     eeg_data = []
     eeg_label = []
-    baseline_eeg = baseline_eeg.transpose((1, 2, 0))
+
     high_num = 1
     low_num = 1
     for key, subjects_data in subjects_trials_data.items():
         for index in subjects_data:
             if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
-
+                baseline_eeg = baseline_eeg_all[key].transpose((1, 2, 0))
                 subject_array = index['stft_spectrum']
                 if get_middle_value:
                     subject_array = subject_array[:, i_index, :]  # get stft middle value->[25,82]
@@ -150,13 +150,13 @@ def process_subjects_data(subjects_trials_data, baseline_eeg, i_index, get_middl
                     eeg_data.append(minus_subject_array)  # tired
                     eeg_label.append(0)
                     num = 'high_' + str(high_num)
-                    plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num)
+                    # plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num)
                     high_num += 1
                 elif index['fatigue_level'] == 'low':
                     eeg_data.append(minus_subject_array)  # good spirits
                     eeg_label.append(1)
                     num = 'low_' + str(low_num)
-                    plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num)
+                    # plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num)
                     low_num += 1
 
     eeg_data = np.array(eeg_data)
@@ -194,18 +194,18 @@ loader = DatasetLoader()
 subject_ids = loader.get_subject_ids()
 
 # for subject_id in subject_ids:
-baseline_eeg = baseline_output[subject_id]
+# baseline_eeg = baseline_output[subject_id]
 subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="stft",
-                                           # single_subject='c95ths',
+                                           single_subject='c95ths',
                                            fatigue_basis="by_feedback",  # by_time
                                            )
-eeg_data, eeg_label = process_subjects_data(subjects_trials_data, baseline_eeg, i_index,
+eeg_data, eeg_label = process_subjects_data(subjects_trials_data, baseline_output, i_index,
                                             get_middle_value=True)  # minus data
 
 eeg_label = to_categorical(eeg_label)
 
-model = call_cnn_model()
-model.summary()
+# model = call_cnn_model()
+# model.summary()
 
 x_train, x_test, y_train, y_test = train_test_split(eeg_data, eeg_label, test_size=0.1)
 

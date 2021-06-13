@@ -7,8 +7,8 @@ from tensorflow.keras.layers import Input, Dense, LSTM, Conv3D, MaxPool3D, Globa
 from tensorflow.keras.models import Model
 from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
-from train_model import plot_acc_val
 from tensorflow.keras import optimizers
+from tensorflow.keras.callbacks import Callback
 
 
 def plot_dataset_X(dataset_X, figure_name):
@@ -63,8 +63,74 @@ def process_subjects_data(subjects_trials_data):
     return eeg_data, eeg_label
 
 
-def call_cnn_model():
-    inputs = Input(shape=(25, 82, 32))
+class plot_acc_val(Callback):
+    # def on_epoch_end(self, epoch, logs=None):
+    #     keys = list(logs.keys())
+    #     print("End epoch {} of training; got log keys: {}".format(epoch, keys))
+    def __init__(self, name='acc_loss'):
+        super().__init__()
+        self.name = name
+        self.losses = []
+        self.acc = []
+        self.val_losses = []
+        self.val_acc = []
+        self.count = 1
+        plt.ion()
+        print("init acc count: " + str(self.count))
+
+    # This function is called at the end of each epoch
+    def on_epoch_end(self, epoch, logs=None):
+        self.plot_figure(epoch, logs)
+
+    def on_train_end(self, logs={}):
+        self.losses = []
+        self.acc = []
+        self.val_losses = []
+        self.val_acc = []
+        self.count += 1
+        plt.close(1)
+
+    def plot_figure(self, epoch, logs):
+        # self.logs.append(logs)
+        self.losses.append(logs.get("loss"))
+        self.acc.append(logs.get("accuracy"))
+        self.val_losses.append(logs.get("val_loss"))
+        self.val_acc.append(logs.get("val_accuracy"))
+        print("[Epoch{}]".format(epoch + 1))
+        # Before plotting ensure at least 2 epochs have passed
+        # if len(self.losses) > 1:
+        n = np.arange(0, len(self.losses))
+        # You can chose the style of your preference
+        # Plot train loss, train acc, val loss and val acc against epochs passed
+        plt.figure(1)
+        plt.clf()
+        plt.subplot(211)
+        plt.plot(n, self.acc, label="train_acc")
+        plt.plot(n, self.val_acc, label="val_acc")
+        plt.title("Training Accuracy [Epoch {}]".format(epoch + 1))
+        plt.xlabel("Epoch")
+        plt.ylabel("Accuracy")
+        plt.tight_layout()
+        plt.legend()
+
+        plt.subplot(212)
+        plt.plot(n, self.losses, label="train_loss")
+        plt.plot(n, self.val_losses, label="val_loss")
+        plt.title("Training LOSS [Epoch {}]".format(epoch + 1))
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.tight_layout()
+        plt.legend()
+        # Make sure there exists a folder called output in the current directory
+        # or replace "output" with whatever directory you want to put in the plots
+        plt.show()
+        plt.savefig("./train_weight/acc/" + self.name + "_" + str(self.count) + ".png")
+        pass
+
+
+def call_cnn_model(input_shape):
+    # inputs = Input(shape=(25, 82, 32))
+    inputs = Input(shape=(input_shape[0], input_shape[1], input_shape[2]))
     x = Conv2D(filters=128, kernel_size=5, activation="relu", padding="same")(inputs)
     # x = MaxPool2D(pool_size=(16, 16))(x)
     x = BatchNormalization()(x)
@@ -89,7 +155,25 @@ def call_cnn_model():
 
     # Define the model.
     cnn = Model(inputs, outputs, name="2Dcnn")
+    opt = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
+    cnn.compile(loss='categorical_crossentropy', optimizer=opt,
+                metrics=['accuracy'])
     return cnn
+
+
+def normalize(array, normalization_mode='min_max'):
+    if normalization_mode == "min_max":
+        array = array - np.min(array, axis=0)
+        array = array / np.max(array, axis=0)
+    elif normalization_mode == "z_score":
+        array = array - np.mean(array, axis=0, dtype=np.float64)
+        array = array / np.std(array, axis=0, dtype=np.float64)
+    elif normalization_mode == "mean_norm":
+        array = array - np.mean(array, axis=0, dtype=np.float64)
+    else:
+        return array
+    return array
+
 
 if __name__ == '__main__':
     loader = DatasetLoader()
