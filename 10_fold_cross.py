@@ -91,7 +91,7 @@ def plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num, 
 
 
 def process_stft_subjects_data(subjects_trials_data, baseline_data, minus_stft_visualize, minus_stft_mode, i_index,
-                               get_middle_value=True):
+                               get_middle_value=False):
     eeg_data = []
     eeg_label = []
     high_num = 1
@@ -137,6 +137,49 @@ def process_stft_subjects_data(subjects_trials_data, baseline_data, minus_stft_v
 
     return eeg_data, eeg_label
 
+# train A, test B
+def process_inter_stft_subjects_data(subjects_trials_data, baseline_data, minus_stft_mode, i_index,
+                                      get_middle_value=False):
+    eeg_data_output = {}
+    eeg_label_output = {}
+    for key, subjects_data in subjects_trials_data.items():
+        eeg_data = []
+        eeg_label = []
+        for index in subjects_data:
+            if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
+                subject_array = index['stft_spectrum']
+                baseline_eeg = baseline_data[key].transpose((1, 2, 0))
+
+                if get_middle_value:
+                    subject_array = subject_array[:, i_index, :]  # get stft middle value:SHAPE->[25,82]
+                #################### input normalize ###############################
+                if minus_stft_mode == 0:  # data -baseline
+                    minus_subject_array = subject_array - baseline_eeg
+                elif minus_stft_mode == 1:  # (data -baseline) normalize
+                    minus_subject_array = subject_array - baseline_eeg
+                    for i in range(minus_subject_array.shape[2]):  # minus array normalize
+                        minus_subject_array[:, :, i] = normalize(minus_subject_array[:, :, i])
+                elif minus_stft_mode == 2:  # normalize data - normalize baseline
+                    for i in range(subject_array.shape[2]):  # normalize
+                        subject_array[:, :, i] = normalize(subject_array[:, :, i])
+                        baseline_eeg[:, :, i] = normalize(baseline_eeg[:, :, i])
+                    minus_subject_array = subject_array - baseline_eeg
+                #################################################################
+                if index['fatigue_level'] == 'high':
+                    eeg_data.append(minus_subject_array)  # tired
+                    eeg_label.append(0)
+
+                elif index['fatigue_level'] == 'low':
+                    eeg_data.append(minus_subject_array)  # good spirits
+                    eeg_label.append(1)
+        new_dict = {key: eeg_data}
+        eeg_data_output.update(new_dict)
+
+        new_dict = {key: eeg_label}
+        eeg_label_output.update(new_dict)
+
+    return eeg_data_output, eeg_label_output
+
 
 def train_stft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_stft_mode=0):
     ################## 10-fold cross validation ###################
@@ -167,15 +210,15 @@ def train_stft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_stft_mo
     customCallback = plot_acc_val(name=acc_avl_file)
     confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=None, y_val=None, classes=2)
 
-    acc=[]
-    loss=[]
+    acc = []
+    loss = []
     cv = KFold(n_splits=10, random_state=1, shuffle=True)
     for train_index, test_index in cv.split(fft_eeg_data):
         # print("TRAIN:", train_index, "TEST:", test_index)
         x_train, x_test = fft_eeg_data[train_index], fft_eeg_data[test_index]
         y_train, y_test = fft_eeg_label[train_index], fft_eeg_label[test_index]
-        confusionMatrix.x_val=x_test
-        confusionMatrix.y_val=y_test
+        confusionMatrix.x_val = x_test
+        confusionMatrix.y_val = y_test
         # confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=x_test, y_val=y_test, classes=2)
         my_callbacks = [EarlyStopping(monitor="val_loss", patience=30),
                         ModelCheckpoint(
@@ -192,10 +235,58 @@ def train_stft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_stft_mo
         K.clear_session()
         model.load_weights('init_model.hdf5')
 
-    k_fold_cross = {"val_accuracy" : np.array(acc),"val_loss": np.array(loss)}
+    k_fold_cross = {"val_accuracy": np.array(acc), "val_loss": np.array(loss)}
 
     # model.save('fatigue_predict_stft_cnn.h5')
     return k_fold_cross
+
+
+def train_inter_stft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn', minus_stft_mode=0):
+    ################## inter ###################
+    index = [i for i in range(len(x_train))]
+    np.random.seed(0)
+    np.random.shuffle(index)
+    x_train = x_train[index]
+    y_train = y_train[index]
+
+    index = [i for i in range(len(x_test))]
+    np.random.seed(0)
+    np.random.shuffle(index)
+    x_test = x_test[index]
+    y_test = y_test[index]
+    ###############################################################
+
+    y_train = to_categorical(y_train)
+    y_test = to_categorical(y_test)
+
+    if model_mode == 'cnn':
+        input_shape = x_train.shape[1:]
+        model = call_cnn_model(input_shape)
+    model.summary()
+    if minus_stft_mode == 0:
+        acc_avl_file = id + '_stft_rawdata_acc_loss'
+        confusion_file = id + '_stft_rawdata_confusion'
+        model_file = 'stft_rawdata.h5'
+    elif minus_stft_mode == 1:
+        acc_avl_file = id + '_stft_norm_acc_loss'
+        confusion_file = id + '_stft_norm_confusion'
+        model_file = 'stft_norm.h5'
+
+    customCallback = plot_acc_val(name=acc_avl_file)
+    confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=x_test, y_val=y_test, classes=2)
+
+    my_callbacks = [EarlyStopping(monitor="val_loss", patience=200),
+                    ModelCheckpoint(filepath=("./train_weight/except_" + id + '_' + model_file),
+                                    save_best_only=True, verbose=1),
+                    customCallback,
+                    confusionMatrix
+                    ]
+    fittedModel = model.fit(x_train, y_train, batch_size=200, epochs=200,
+                            verbose=1, validation_data=(x_test, y_test), callbacks=my_callbacks)
+    acc = (max(fittedModel.history["val_accuracy"]))
+    loss = (min(fittedModel.history["val_loss"]))
+
+    return acc, loss
 
 
 eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
@@ -204,14 +295,15 @@ eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
                "FT8", "TP7", "CP3", "CPz", "CP4", "TP8", "O1", "O2"]
 
 ################### parameter #####################
+feature_type = 'stft'  # 'stft' or 'time'
 data_normalize = False
-get_middle_value = True
+get_middle_value = False
 baseline_stft_visualize = False
-all_pepeole = True
+all_pepeole = False  # True: 10-fold , False:用A訓練 B測試
 minus_stft_visualize = False
 fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
-minus_stft_mode = 0  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
-
+minus_stft_mode = 1  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
+selected_channels = None
 ######################## get average baseline eeg ###########################
 baseline_output = {}
 for subject_dir in glob_sorted('./dataset2/*'):
@@ -227,36 +319,63 @@ for subject_dir in glob_sorted('./dataset2/*'):
         plot_baseline_stft(all_stft_array, t, f, subject_id)
 ######################### load rest data ################################
 loader = DatasetLoader()
+
 if data_normalize:
     loader.apply_signal_normalization = True
 else:
     loader.apply_signal_normalization = False
 
-if all_pepeole:
+if all_pepeole: # 10 fold
     subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="stft",
                                                fatigue_basis=fatigue_basis,
-                                               # selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"]
+                                               selected_channels=selected_channels
                                                )
-    fft_eeg_data, fft_eeg_label = process_stft_subjects_data(subjects_trials_data, baseline_output,
-                                                             minus_stft_visualize, minus_stft_mode, i_index,
-                                                             get_middle_value=get_middle_value)
-    np.save("./npy_file/fft_eeg_data.npy", fft_eeg_data)
-    np.save("./npy_file/fft_eeg_label.npy", fft_eeg_label)
+    stft_eeg_data, stft_eeg_label = process_stft_subjects_data(subjects_trials_data, baseline_output,
+                                                               minus_stft_visualize, minus_stft_mode, i_index,
+                                                               get_middle_value=get_middle_value)
+    np.save("./npy_file/10fold_stft_eeg_data.npy", stft_eeg_data)
+    np.save("./npy_file/10fold_stft_eeg_label.npy", stft_eeg_label)
     start_time = time.time()
-    fittedModel = train_stft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn')
-    end_time = _time = time.time()
+    fittedModel = train_stft_data(stft_eeg_data, stft_eeg_label, model_mode='cnn', minus_stft_mode=minus_stft_mode)
+    end_time = time.time()
 
-else:
+    print('Training Time: ' + str(end_time - start_time))
+    print('mean accuracy:%.3f' % fittedModel["val_accuracy"].mean())
+    print('mean loss:%.3f' % fittedModel["val_loss"].mean())
+
+else:    # train A, test B
     subject_ids = loader.get_subject_ids()
+
+    subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="stft",
+                                               # single_subject=id,
+                                               fatigue_basis=fatigue_basis,
+                                               selected_channels=selected_channels
+                                               )
+    test_stft_eeg_data, test_stft_eeg_label = process_inter_stft_subjects_data(subjects_trials_data,
+                                                                                baseline_output, minus_stft_mode,
+                                                                                i_index,
+                                                                                get_middle_value=get_middle_value)
+
+    all_acc = []
+    all_loss = []
     for id in subject_ids:
-        subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="stft",
-                                                   single_subject=id,
-                                                   fatigue_basis=fatigue_basis,
-                                                   # selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"]
-                                                   )
-        fft_eeg_data, fft_eeg_label = process_stft_subjects_data(subjects_trials_data, baseline_output,
-                                                                 minus_stft_visualize, minus_stft_mode, i_index,
-                                                                 get_middle_value=get_middle_value)
-print('Training Time: ' + str(end_time - start_time))
-print('mean accuracy:%.3f' % fittedModel["val_accuracy"].mean())
-print('mean loss:%.3f' % fittedModel["val_loss"].mean())
+        x_train = []
+        y_train = []
+        x_test = np.array(test_stft_eeg_data[id])
+        y_test = np.array(test_stft_eeg_label[id])
+
+        subject_ids_train = subject_ids.copy()
+        subject_ids_train.remove(id)  # remove test subject
+        for i in subject_ids_train:  # get training eeg data and label
+            x_train.extend(np.array(test_stft_eeg_data[i]))
+            y_train.extend(np.array(test_stft_eeg_label[i]))
+        x_train = np.array(x_train)
+        y_train = np.array(y_train)
+        acc, loss = train_inter_stft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn', minus_stft_mode=0)
+        all_acc.append(acc)
+        all_loss.append(loss)
+    all_acc = np.array(all_acc)
+    all_loss = np.array(all_loss)
+    print('mean acc: ' + str(all_acc.mean()))
+    print('mean loss: ' + str(all_loss.mean()))
+    a = 0

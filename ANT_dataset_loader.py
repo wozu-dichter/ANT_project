@@ -75,6 +75,7 @@ class DatasetLoader:
         self.stft_noverlap_ratio = 0.95
         self.stft_min_freq = 3
         self.stft_max_freq = 28
+        self.get_middle_value =False
 
     def __init_settings(self):
         warnings.filterwarnings("error")
@@ -432,6 +433,19 @@ class DatasetLoader:
                                      fs=self.sample_rate,
                                      nperseg=self.stft_nperseg,
                                      noverlap=int(self.stft_nperseg * self.stft_noverlap_ratio))
+                    ################ get stft middle value #################
+                    if self.get_middle_value:
+                        # print('get_middle_value turn on')
+                        selected_time = []
+                        selected_zxx = []
+                        for i in range(t.shape[0]):  # get stft middle value
+                            if t[i] < (len(signal_single_channel) / self.sample_rate - 0.5) and t[i] > 0.5:
+                                selected_time.append(t[i])
+                                selected_zxx.append(zxx[:, i])
+                        t = np.array(selected_time)
+                        zxx = np.array(selected_zxx).T
+                    ##########################################
+
                     f, zxx = freq_band_selection(f, zxx, min_freq=self.stft_min_freq, max_freq=self.stft_max_freq)
                     spectrum.append(np.abs(zxx))
 
