@@ -267,91 +267,91 @@ def train_inter_fft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn',
 
     return acc, loss
 
+if __name__ == '__main__':
+    eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
+                   "C4", "T8", "P3", "Pz", "P4", "P7", "P8", "Oz",
+                   "AF3", "AF4", "F7", "F8", "FT7", "FC3", "FCz", "FC4",
+                   "FT8", "TP7", "CP3", "CPz", "CP4", "TP8", "O1", "O2"]
 
-eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
-               "C4", "T8", "P3", "Pz", "P4", "P7", "P8", "Oz",
-               "AF3", "AF4", "F7", "F8", "FT7", "FC3", "FCz", "FC4",
-               "FT8", "TP7", "CP3", "CPz", "CP4", "TP8", "O1", "O2"]
+    ################### parameter #####################
+    feature_type = 'time'  # 'stft' or 'time'
+    data_normalize = False
+    get_middle_value = False
+    baseline_stft_visualize = False
+    all_pepeole = True  # True: 10-fold , False:用A訓練 B測試
+    minus_fft_visualize = False
+    fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
+    minus_fft_mode = 1  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
+    selected_channels = None
+    ######################## get average baseline eeg ###########################
+    baseline_output = {}
+    for subject_dir in glob_sorted('./dataset2/*'):
+        subject_id = os.path.basename(subject_dir)
+        for record_dir in glob_sorted(subject_dir + "/*"):
+            npy_paths = [p for p in glob_sorted(record_dir + "/*.npy") if 'baseline' in p][0]
+            data = load_npy(npy_paths)
+            avg_stft_array = get_baseline_FFT(data, subject_id, data_normalize=data_normalize)  # get baseline stft
+            new_dict = {subject_id: avg_stft_array}  # output shape = [149,32]
+            baseline_output.update(new_dict)
+        if baseline_stft_visualize:
+            print('design plot_baseline_fft()')
+    ######################### load rest data ################################
+    loader = DatasetLoader()
 
-################### parameter #####################
-feature_type = 'time'  # 'stft' or 'time'
-data_normalize = False
-get_middle_value = False
-baseline_stft_visualize = False
-all_pepeole = False  # True: 10-fold , False:用A訓練 B測試
-minus_fft_visualize = False
-fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
-minus_fft_mode = 1  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
-selected_channels = None
-######################## get average baseline eeg ###########################
-baseline_output = {}
-for subject_dir in glob_sorted('./dataset2/*'):
-    subject_id = os.path.basename(subject_dir)
-    for record_dir in glob_sorted(subject_dir + "/*"):
-        npy_paths = [p for p in glob_sorted(record_dir + "/*.npy") if 'baseline' in p][0]
-        data = load_npy(npy_paths)
-        avg_stft_array = get_baseline_FFT(data, subject_id, data_normalize=data_normalize)  # get baseline stft
-        new_dict = {subject_id: avg_stft_array}  # output shape = [149,32]
-        baseline_output.update(new_dict)
-    if baseline_stft_visualize:
-        print('design plot_baseline_fft()')
-######################### load rest data ################################
-loader = DatasetLoader()
+    if data_normalize:
+        loader.apply_signal_normalization = True
+    else:
+        loader.apply_signal_normalization = False
 
-if data_normalize:
-    loader.apply_signal_normalization = True
-else:
-    loader.apply_signal_normalization = False
+    if all_pepeole:  # 10 fold
+        subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type=feature_type,
+                                                   fatigue_basis=fatigue_basis,
+                                                   selected_channels=selected_channels
+                                                   )
+        stft_eeg_data, stft_eeg_label = fft_process_subjects_data(subjects_trials_data, baseline_output, minus_fft_mode,
+                                                                  minus_fft_visualize)
+        np.save("./npy_file/10fold_fft_eeg_data.npy", stft_eeg_data)
+        np.save("./npy_file/10fold_fft_eeg_label.npy", stft_eeg_label)
+        start_time = time.time()
+        fittedModel = train_fft_data(stft_eeg_data, stft_eeg_label, model_mode='cnn', minus_fft_mode=minus_fft_mode)
+        end_time = time.time()
 
-if all_pepeole:  # 10 fold
-    subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type=feature_type,
-                                               fatigue_basis=fatigue_basis,
-                                               selected_channels=selected_channels
-                                               )
-    stft_eeg_data, stft_eeg_label = fft_process_subjects_data(subjects_trials_data, baseline_output, minus_fft_mode,
-                                                              minus_fft_visualize)
-    np.save("./npy_file/10fold_fft_eeg_data.npy", stft_eeg_data)
-    np.save("./npy_file/10fold_fft_eeg_label.npy", stft_eeg_label)
-    start_time = time.time()
-    fittedModel = train_fft_data(stft_eeg_data, stft_eeg_label, model_mode='cnn', minus_fft_mode=minus_fft_mode)
-    end_time = time.time()
+        print('Training Time: ' + str(end_time - start_time))
+        print('mean accuracy:%.3f' % fittedModel["val_accuracy"].mean())
+        print('mean loss:%.3f' % fittedModel["val_loss"].mean())
 
-    print('Training Time: ' + str(end_time - start_time))
-    print('mean accuracy:%.3f' % fittedModel["val_accuracy"].mean())
-    print('mean loss:%.3f' % fittedModel["val_loss"].mean())
+    else:  # train A, test B
+        subject_ids = loader.get_subject_ids()
 
-else:  # train A, test B
-    subject_ids = loader.get_subject_ids()
+        subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type=feature_type,
+                                                   # single_subject=id,
+                                                   fatigue_basis=fatigue_basis,
+                                                   selected_channels=selected_channels
+                                                   )
+        test_fft_eeg_data, test_fft_eeg_label = process_inter_fft_subjects_data(subjects_trials_data,
+                                                                                  baseline_output, minus_fft_mode)
 
-    subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type=feature_type,
-                                               # single_subject=id,
-                                               fatigue_basis=fatigue_basis,
-                                               selected_channels=selected_channels
-                                               )
-    test_stft_eeg_data, test_stft_eeg_label = process_inter_fft_subjects_data(subjects_trials_data,
-                                                                              baseline_output, minus_fft_mode)
+        all_acc = []
+        all_loss = []
+        for id in subject_ids:
+            x_train = []
+            y_train = []
+            x_test = np.array(test_fft_eeg_data[id])
+            y_test = np.array(test_fft_eeg_label[id])
 
-    all_acc = []
-    all_loss = []
-    for id in subject_ids:
-        x_train = []
-        y_train = []
-        x_test = np.array(test_stft_eeg_data[id])
-        y_test = np.array(test_stft_eeg_label[id])
-
-        subject_ids_train = subject_ids.copy()
-        subject_ids_train.remove(id)  # remove test subject
-        for i in subject_ids_train:  # get training eeg data and label
-            x_train.extend(np.array(test_stft_eeg_data[i]))
-            y_train.extend(np.array(test_stft_eeg_label[i]))
-        x_train = np.array(x_train)
-        y_train = np.array(y_train)
-        acc, loss = train_inter_fft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn',
-                                         minus_fft_mode=minus_fft_mode)
-        all_acc.append(acc)
-        all_loss.append(loss)
-    all_acc = np.array(all_acc)
-    all_loss = np.array(all_loss)
-    print('mean acc: ' + str(all_acc.mean()))
-    print('mean loss: ' + str(all_loss.mean()))
-    a = 0
+            subject_ids_train = subject_ids.copy()
+            subject_ids_train.remove(id)  # remove test subject
+            for i in subject_ids_train:  # get training eeg data and label
+                x_train.extend(np.array(test_fft_eeg_data[i]))
+                y_train.extend(np.array(test_fft_eeg_label[i]))
+            x_train = np.array(x_train)
+            y_train = np.array(y_train)
+            acc, loss = train_inter_fft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn',
+                                             minus_fft_mode=minus_fft_mode)
+            all_acc.append(acc)
+            all_loss.append(loss)
+        all_acc = np.array(all_acc)
+        all_loss = np.array(all_loss)
+        print('mean acc: ' + str(all_acc.mean()))
+        print('mean loss: ' + str(all_loss.mean()))
+        a = 0
