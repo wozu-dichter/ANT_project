@@ -116,7 +116,6 @@ class ConfusionMatrix(Callback):
         fmt = '.2f' if normalize else 'd'
         thresh = np.max(cnf_matrix) / 2.
         for i, j in itertools.product(range(cnf_matrix.shape[0]), range(cnf_matrix.shape[1])):
-            print(i,j,cnf_matrix[i, j])
             plt.text(j, i, format(cnf_matrix[i, j], fmt),
                      horizontalalignment="center",
                      color="white" if cnf_matrix[i, j] > thresh else "black")

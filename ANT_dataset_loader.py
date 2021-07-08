@@ -62,7 +62,7 @@ class DatasetLoader:
         self.rt_filtration_rate = 0.05
 
         # parameters for Butterworth bandpass filter
-        self.apply_bandpass_filter = False
+        self.apply_bandpass_filter = True
         self.bandpass_visualize = False
         self.bandpass_filter_type = "filtfilt"
         self.bandpass_filter_order = 1

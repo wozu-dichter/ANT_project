@@ -9,8 +9,8 @@ import tensorflow.keras.backend as K
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from train_model import ConfusionMatrix
 import time
-from scipy.fftpack import fft
-
+# from scipy.fftpack import fft
+from scipy.signal import filtfilt as fft
 
 def get_baseline_FFT(data, subject_id, data_normalize=False):
     sampling_rate = 512

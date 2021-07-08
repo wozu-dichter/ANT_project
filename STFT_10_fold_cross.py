@@ -294,7 +294,7 @@ if __name__ == '__main__':
     all_pepeole = False  # True: 10-fold , False:用A訓練 B測試
     minus_stft_visualize = False
     fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
-    minus_stft_mode = 1  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
+    minus_stft_mode = 0  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
     selected_channels = None
     ######################## get average baseline eeg ###########################
 
@@ -369,6 +369,7 @@ if __name__ == '__main__':
             all_loss.append(loss)
         all_acc = np.array(all_acc)
         all_loss = np.array(all_loss)
+        print(all_acc)
         print('mean acc: ' + str(all_acc.mean()))
         print('mean loss: ' + str(all_loss.mean()))
         a = 0

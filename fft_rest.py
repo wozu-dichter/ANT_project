@@ -8,7 +8,8 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import optimizers
 from EEGModels import EEGNet, EEGNet_TINA_TEST, call_cnn_model
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
-from train_model import ConfusionMatrix, plot_acc_val
+from train_model import ConfusionMatrix
+from freqency_train import plot_acc_val
 
 
 def normalize(array, normalization_mode='min_max'):

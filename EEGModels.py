@@ -79,7 +79,7 @@ def call_cnn_model():
     cnn = Model(inputs, outputs, name="2Dcnn")
     return cnn
 
-def EEGNet_TINA_TEST(nb_classes, Chans=64, Samples=128,
+def EEGNet_CNN_COMBINE(nb_classes, Chans=64, Samples=128,
            dropoutRate=0.5, kernLength=64, F1=8,
            D=2, F2=16, norm_rate=0.25, dropoutType='Dropout'):
 
