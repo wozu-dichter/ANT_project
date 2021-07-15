@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from ANT_dataset_loader import DatasetLoader, glob_sorted, load_npy, freq_band_selection
+from ANT_dataset_loader import DatasetLoader, glob_sorted, load_npy, signal_sticking
 from freqency_train import fft_call_cnn_model, normalize, plot_acc_val
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
@@ -9,30 +9,15 @@ import tensorflow.keras.backend as K
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from train_model import ConfusionMatrix
 import time
-# from scipy.fftpack import fft
-from scipy.signal import filtfilt as fft
+from scipy.fftpack import fft
+from scipy.signal import butter, filtfilt
 
-def get_baseline_FFT(data, subject_id, data_normalize=False):
-    sampling_rate = 512
-    all_fft_array = []
-    high_fre = 30
-    for i in range(0, 60, 5):
-        raw_data = data['eeg'][i:i + 5, :, :].reshape(-1, 32)
-        ############FFT compute###############
-        fft_array = np.array([(abs(fft(i)) / sampling_rate)[:len(abs(fft(i))) // 2] for i in
-                              raw_data.T]).T  # output shape = [point, channel]
-        fft_array = fft_array[1:int((high_fre / (sampling_rate // 2)) * len(fft_array)), :]
-        ################## normalize ###################
-        if data_normalize:
-            print('design baseline FFT normalize')
-        ###############################################
-        all_fft_array.append(np.array(fft_array))  # list: 12 array
-    avg_stft_array = np.array(all_fft_array).mean(axis=0)  # 對12筆資料做平均
-    # plot_dataset_fft(avg_stft_array,subject_id)
-    # npy_name='./npy_file/baseline_fft/'+subject_id+'_baseline'
-    # np.save(npy_name,avg_stft_array) #[1280,32]
-    return avg_stft_array
-
+def butter_bandpass_filter_filtfilt(data, low_cut, high_cut, fs, order=5):
+    wn1 = 2 * low_cut / fs
+    wn2 = 2 * high_cut / fs
+    [b, a] = butter(order, [wn1, wn2], btype="bandpass", output="ba")
+    y = filtfilt(b, a, data)
+    return y
 
 def plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name):
     eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
@@ -62,57 +47,30 @@ def plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name):
         plt.clf()
 
 
-def fft_process_subjects_data(subjects_trials_data, baseline_output, minus_fft_mode, minus_fft_visualize=False):
+def fft_process_subjects_data(subjects_trials_data, minus_fft_visualize=False):
     eeg_data = []
     eeg_label = []
-    high_fre = 30
-    for key, subjects_data in subjects_trials_data.items():
-        baseline_array = baseline_output[key]
+
+    for key, subjects_data in subjects_trials_data.items():  # c95ccy
         high_num = 1
         low_num = 1
-        sampling_rate = 512
-        for index in subjects_data:
-            if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
-                subject_array = index['eeg'].T
-
-                ################## FFT ####################
-                fft_array = [(abs(fft(i)) / sampling_rate)[:len(abs(fft(i))) // 2] for i in subject_array]
-                fft_array = np.array(fft_array).T
-                subject_array = fft_array[1:int((high_fre / (sampling_rate // 2)) * len(fft_array)), :]
-                #################### minus FFT mode ##########################
-                if minus_fft_mode == 0:
-                    minus_array = subject_array - baseline_array
-                elif minus_fft_mode == 1:
-                    minus_array = subject_array - baseline_array
-                    for i in range(subject_array.shape[1]):  # minus array normalize
-                        minus_array[:, i] = normalize(minus_array[:, i])
-                elif minus_fft_mode == 2:
-                    for i in range(subject_array.shape[1]):
-                        subject_array[:, i] = normalize(subject_array[:, i])
-                        baseline_array[:, i] = normalize(baseline_array[:, i])
-                    minus_array = subject_array - baseline_array
-                else:  # mode 3
-                    for i in range(subject_array.shape[1]):
-                        subject_array[:, i] = normalize(subject_array[:, i])
-                        baseline_array[:, i] = normalize(baseline_array[:, i])
-                    minus_array = subject_array - baseline_array
-                    for i in range(minus_array.shape[1]):
-                        minus_array[:, i] = normalize(minus_array[:, i])
-                #################################################
-                if index['fatigue_level'] == 'high':
-                    if minus_fft_visualize:
-                        figure_name = key + "/" + key + "fft_high_" + str(high_num)
-                        plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name)
-                        high_num += 1
-                    eeg_data.append(minus_array)  # tired
-                    eeg_label.append(0)
-                elif index['fatigue_level'] == 'low':
-                    if minus_fft_visualize:
-                        figure_name = key + "/" + key + "fft_low_" + str(low_num)
-                        plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name)
-                        low_num += 1
-                    eeg_data.append(minus_array)  # good spirits
-                    eeg_label.append(1)
+        for record_index, record_data in subjects_data.items():  # record0
+            for index in record_data['trials_data']:
+                if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
+                    subject_array = index['fft']
+                    eeg_data.append(subject_array)
+                    if index['fatigue_level'] == 'high':
+                        if minus_fft_visualize:
+                            figure_name = key + "/" + key + "fft_high_" + str(high_num)
+                            plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name)
+                            high_num += 1
+                        eeg_label.append(0)
+                    elif index['fatigue_level'] == 'low':
+                        if minus_fft_visualize:
+                            figure_name = key + "/" + key + "fft_low_" + str(low_num)
+                            plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name)
+                            low_num += 1
+                        eeg_label.append(1)
 
     eeg_data = np.array(eeg_data)
     eeg_label = np.array(eeg_label)
@@ -274,7 +232,7 @@ if __name__ == '__main__':
                    "FT8", "TP7", "CP3", "CPz", "CP4", "TP8", "O1", "O2"]
 
     ################### parameter #####################
-    feature_type = 'time'  # 'stft' or 'time'
+    feature_type = 'fft'
     data_normalize = False
     get_middle_value = False
     baseline_stft_visualize = False
@@ -283,18 +241,6 @@ if __name__ == '__main__':
     fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
     minus_fft_mode = 1  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
     selected_channels = None
-    ######################## get average baseline eeg ###########################
-    baseline_output = {}
-    for subject_dir in glob_sorted('./dataset2/*'):
-        subject_id = os.path.basename(subject_dir)
-        for record_dir in glob_sorted(subject_dir + "/*"):
-            npy_paths = [p for p in glob_sorted(record_dir + "/*.npy") if 'baseline' in p][0]
-            data = load_npy(npy_paths)
-            avg_stft_array = get_baseline_FFT(data, subject_id, data_normalize=data_normalize)  # get baseline stft
-            new_dict = {subject_id: avg_stft_array}  # output shape = [149,32]
-            baseline_output.update(new_dict)
-        if baseline_stft_visualize:
-            print('design plot_baseline_fft()')
     ######################### load rest data ################################
     loader = DatasetLoader()
 
@@ -308,8 +254,7 @@ if __name__ == '__main__':
                                                    fatigue_basis=fatigue_basis,
                                                    selected_channels=selected_channels
                                                    )
-        stft_eeg_data, stft_eeg_label = fft_process_subjects_data(subjects_trials_data, baseline_output, minus_fft_mode,
-                                                                  minus_fft_visualize)
+        stft_eeg_data, stft_eeg_label = fft_process_subjects_data(subjects_trials_data, minus_fft_visualize)
         np.save("./npy_file/10fold_fft_eeg_data.npy", stft_eeg_data)
         np.save("./npy_file/10fold_fft_eeg_label.npy", stft_eeg_label)
         start_time = time.time()

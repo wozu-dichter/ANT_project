@@ -123,9 +123,9 @@ class plot_acc_val(Callback):
         plt.legend()
         # Make sure there exists a folder called output in the current directory
         # or replace "output" with whatever directory you want to put in the plots
+        plt.pause(0.001)
         plt.show()
         plt.savefig("./train_weight/acc/" + self.name + "_" + str(self.count) + ".png")
-        pass
 
 
 def call_cnn_model(input_shape):
@@ -160,6 +160,7 @@ def call_cnn_model(input_shape):
                 metrics=['accuracy'])
     return cnn
 
+
 def time_domain_call_cnn_model(input_shape):
     # inputs = Input(shape=(2560, 1, 32))
     inputs = Input(shape=(input_shape[0], 1, input_shape[1]))
@@ -192,6 +193,7 @@ def time_domain_call_cnn_model(input_shape):
                 metrics=['accuracy'])
     return cnn
 
+
 def time_call_cnn_model(input_shape):
     # inputs = Input(shape=(sample, 1, 32))
     inputs = Input(shape=(input_shape[0], 1, input_shape[1]))
@@ -223,7 +225,6 @@ def time_call_cnn_model(input_shape):
     cnn.compile(loss='categorical_crossentropy', optimizer=opt,
                 metrics=['accuracy'])
     return cnn
-
 
 
 def fft_call_cnn_model(input_shape):
