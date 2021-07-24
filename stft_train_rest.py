@@ -81,7 +81,7 @@ eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
 
 ################### parameter #####################
 data_normalize = False
-get_middle_value = True
+get_middle_value = False
 baseline_stft_visualize = False
 all_pepeole = False
 minus_stft_visualize = False
@@ -89,6 +89,7 @@ fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
 minus_stft_mode = 1  # 1: rawdata-baseline  2:(rawdata-baseline)normalize
 
 loader = DatasetLoader()
+loader.apply_bandpass_filter = True
 loader.minus_mode = minus_stft_mode
 if data_normalize:
     loader.apply_signal_normalization = True
@@ -123,8 +124,8 @@ else:
         start_time = time.time()
         fittedModel = train_stft_data(reformatted_data, minus_stft_mode=minus_stft_mode,model_mode='cnn', id=id)
         end_time = _time = time.time()
-        acc.append(max(fittedModel.history["val_accuracy"]).round(2))
-        loss.append(min(fittedModel.history["val_loss"]).round(2))
+        acc.append(round(max(fittedModel.history["val_accuracy"]),2))
+        loss.append(round(min(fittedModel.history["val_loss"]),2))
 
     print('Training Time: ' + str(end_time - start_time))
     print('mean accuracy:%.3f' % np.mean(np.array(acc)))

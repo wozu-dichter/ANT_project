@@ -10,9 +10,8 @@ import matplotlib.pyplot as plt
 from glob import glob
 from termcolor import cprint
 from tqdm import tqdm
-from scipy.signal import stft, butter, sosfilt, filtfilt
+from scipy.signal import stft, butter, sosfilt, filtfilt, welch
 from scipy.fft import fft
-
 
 class DatasetLoader:
     def __init__(self):
@@ -39,6 +38,8 @@ class DatasetLoader:
                                "C4": 8, "T8": 9, "P3": 10, "Pz": 11, "P4": 12, "P7": 13, "P8": 14, "Oz": 15,
                                "AF3": 16, "AF4": 17, "F7": 18, "F8": 19, "FT7": 20, "FC3": 21, "FCz": 22, "FC4": 23,
                                "FT8": 24, "TP7": 25, "CP3": 26, "CPz": 27, "CP4": 28, "TP8": 29, "O1": 30, "O2": 31}
+
+        self.feature_selection_mode = True
 
         # # optional and preprocessing parameters
         # save RT boxplot or not
@@ -211,19 +212,41 @@ class DatasetLoader:
                             self.subjects_data[subject_id][record_id]["trials_data"].append(trial_data)
 
                     elif self.data_type == "rest":
+                        fatigue_band_array = []
+                        fatigue_array = []
                         for i in range(0, raw_eeg.shape[0], self.rest_signal_len):
-                            trial_data = {"eeg": raw_eeg[i:i + self.rest_signal_len].reshape(-1, desired_channel_num)}
                             if npy_path in self.subjects_fatigue_levels[subject_id]["high"]:
+                                trial_data = {"eeg": raw_eeg[i:i + self.rest_signal_len].reshape(-1, desired_channel_num)}
                                 trial_data["fatigue_level"] = "high"
+                                fatigue_array.append(trial_data)
+                                channel_psd = self.compute_psd_band(trial_data)
+                                fatigue_band_array.append(channel_psd)
                             elif npy_path in self.subjects_fatigue_levels[subject_id]["low"]:
+                                trial_data = {"eeg": raw_eeg[i:i + self.rest_signal_len].reshape(-1, desired_channel_num)}
                                 trial_data["fatigue_level"] = "low"
-                            else:
-                                trial_data["fatigue_level"] = None
-                            self.subjects_data[subject_id][record_id]["trials_data"].append(trial_data)
+                                fatigue_array.append(trial_data)
+                                channel_psd = self.compute_psd_band(trial_data)
+                                fatigue_band_array.append(channel_psd)
+
+                        if npy_path in self.subjects_fatigue_levels[subject_id]["high"] or npy_path in \
+                                self.subjects_fatigue_levels[subject_id]["low"]:
+                            if self.feature_selection_mode==True:
+                                outlier_index_array = remove_outlier(np.array(fatigue_band_array))
+                                for index in sorted(outlier_index_array, reverse=True):
+                                    del fatigue_array[index]
+                            self.subjects_data[subject_id][record_id]["trials_data"].extend(fatigue_array)
 
                 # process baseline data
                 baseline_data = load_npy(npy_paths["baseline_npy"][0])
                 self.subjects_data[subject_id][record_id]["baseline_data"] = baseline_data
+
+    def compute_psd_band(self, array):
+        channel_psd=[]
+        for i_channel in array["eeg"].T:
+            freqs, psd = welch(i_channel, fs=self.sample_rate, nperseg=self.sample_rate)
+            alpha, theta, beta, delta = get_psd_band(freqs, psd)
+            channel_psd.append([alpha, theta, beta, delta])
+        return np.array(channel_psd)
 
     def __trials_data_preprocessing(self):
         tic = time.time()
@@ -612,9 +635,9 @@ def minus_baseline_output(input_eeg, baseline_eeg, minus_mode):
         minus_eeg_array = [signal_normalization(array, mode='mean_norm') for array in minus_eeg_array]
         return minus_eeg_array
     elif minus_mode == 3:
-        a = 0
+        print("not finiished")
     elif minus_mode == 4:
-        a = 0
+        print("not finiished")
     elif minus_mode == 5:
         minus_eeg_array = input_eeg - baseline_eeg
         minus_eeg_array = minus_eeg_array - np.mean(minus_eeg_array)
@@ -660,6 +683,39 @@ def printf(string, color="yellow", on_color=None, attrs=None, **kwargs):
     #     attrs = ["bold"]
 
     cprint(string, color=color, on_color=on_color, attrs=attrs, **kwargs)
+
+def get_psd_band(freqs, psd):
+    delta = psd[(np.where((freqs > 0) & (freqs <= 4)))].sum()
+    theta = psd[(np.where((freqs > 4) & (freqs <= 7)))].sum()
+    alpha = psd[(np.where((freqs > 7) & (freqs <= 13)))].sum()
+    beta = psd[(np.where((freqs > 13) & (freqs <= 30)))].sum()
+
+    return alpha, theta, beta, delta
+
+
+def remove_outlier(array, ratio_threshold=0.5):
+    n = 1.5
+    outlier_filter_array = []
+    for i_channel in range(array.shape[1]):
+        channel_array = array[:, i_channel, :]
+        # IQR = Q3-Q1
+        IQR = np.percentile(channel_array, 75, axis=0) - np.percentile(channel_array, 25, axis=0)
+        # outlier = Q3 + n*IQR
+        outlier_big_index = [channel_array < np.percentile(channel_array, 75, axis=0) + n * IQR]
+        # outlier = Q1 - n*IQR
+        outlier_small_index = [channel_array > np.percentile(channel_array, 25, axis=0) - n * IQR]
+        outlier_filter = np.array(outlier_big_index or outlier_small_index)[0]
+        outlier_filter_array.append(outlier_filter)
+
+    outlier_filter_array = np.array(outlier_filter_array)
+    outlier_index_array=[]
+    for index in range(outlier_filter_array.shape[1]):
+        index_array = outlier_filter_array[:, index, :]
+        normal_ratio = index_array.sum()/np.size(index_array)
+        if normal_ratio<=ratio_threshold:
+            outlier_index_array.append(index) # removed index
+    # print('removed data ratio:'+str(len(outlier_index_array))+'/60')  # print ratio:n/60
+    return np.array(outlier_index_array)
 
 
 def custom_sort(my_list):

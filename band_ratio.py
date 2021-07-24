@@ -228,7 +228,7 @@ for key in subject_ids:
     alpha_array, theta_array, beta_array, delta_array, alpha_array_nor, theta_array_nor, beta_array_nor, delta_array_nor = get_baseline_psd(
         baseline_data, key, data_normalize=loader.apply_signal_normalization)
     for data in eeg_subject:
-        if data['fatigue_level'] == 'high' or 'low':
+        if data['fatigue_level'] == 'high' or data['fatigue_level'] == 'low':
             subject_array = data['eeg']
             band_array = []
             band_array_nor = []

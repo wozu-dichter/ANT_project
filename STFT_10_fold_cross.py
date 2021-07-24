@@ -187,9 +187,9 @@ def train_stft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_stft_mo
         confusion_file = 'stft_norm_confusion'
         model_file = 'stft_norm.h5'
     elif minus_stft_mode == 5:
-        acc_avl_file = id + '_mode5_stft_norm_acc_loss'
-        confusion_file = id + '_mode5_stft_norm_confusion'
-        model_file = '_mode5_stft_norm.h5'
+        acc_avl_file = '10fold_mode5_stft_norm_acc_loss'
+        confusion_file ='10fold_mode5_stft_norm_confusion'
+        model_file = 'mode5_stft_norm.h5'
 
     customCallback = plot_acc_val(name=acc_avl_file)
     confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=None, y_val=None, classes=2)
@@ -301,7 +301,7 @@ if __name__ == '__main__':
     all_pepeole = False  # True: 10-fold , False:用A訓練 B測試
     minus_stft_visualize = False
     fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
-    minus_stft_mode = 5  # 1: rawdata-baseline  2:(rawdata-baseline)normalize  5:(minus_data)normalize
+    minus_stft_mode = 1  # 1: rawdata-baseline  2:(rawdata-baseline)normalize  5:(minus_data)normalize
     selected_channels = None
 
     loader = DatasetLoader()
@@ -332,7 +332,9 @@ if __name__ == '__main__':
 
         print('Training Time: ' + str(end_time - start_time))
         print('mean accuracy:%.3f' % fittedModel["val_accuracy"].mean())
+        print(fittedModel["val_accuracy"].round(2))
         print('mean loss:%.3f' % fittedModel["val_loss"].mean())
+        print(fittedModel["val_loss"].round(2))
 
     else:  # train A, test B
         subject_ids = loader.get_subject_ids()
