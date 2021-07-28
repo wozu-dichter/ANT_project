@@ -144,7 +144,7 @@ def process_inter_stft_subjects_data(subjects_trials_data):
         for record_index, record_data in subjects_data.items():  # record0
             for index in record_data['trials_data']:
                 if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
-                    subject_array = index['stft_spectrum']
+                    subject_array = index['stft_baseline_removed']
                     eeg_data.append(subject_array)
                     #################################################################
                     if index['fatigue_level'] == 'high':  # tired
@@ -204,7 +204,7 @@ def train_stft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_stft_mo
         confusionMatrix.x_val = x_test
         confusionMatrix.y_val = y_test
         # confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=x_test, y_val=y_test, classes=2)
-        my_callbacks = [EarlyStopping(monitor="val_loss", patience=30),
+        my_callbacks = [EarlyStopping(monitor="val_loss", patience=50),
                         ModelCheckpoint(
                             filepath="./train_weight/" + model_file,
                             save_best_only=True, verbose=1),
@@ -305,6 +305,8 @@ if __name__ == '__main__':
     selected_channels = None
 
     loader = DatasetLoader()
+    loader.bandpass_low_cut = 5
+    loader.bandpass_high_cut = 30
     loader.apply_bandpass_filter = True
     loader.minus_mode = minus_stft_mode
 

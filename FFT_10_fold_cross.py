@@ -9,8 +9,8 @@ import tensorflow.keras.backend as K
 from sklearn.model_selection import train_test_split, KFold, cross_val_score
 from train_model import ConfusionMatrix
 import time
-from scipy.fftpack import fft
 from scipy.signal import butter, filtfilt
+
 
 def butter_bandpass_filter_filtfilt(data, low_cut, high_cut, fs, order=5):
     wn1 = 2 * low_cut / fs
@@ -18,6 +18,7 @@ def butter_bandpass_filter_filtfilt(data, low_cut, high_cut, fs, order=5):
     [b, a] = butter(order, [wn1, wn2], btype="bandpass", output="ba")
     y = filtfilt(b, a, data)
     return y
+
 
 def plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name):
     eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
@@ -47,7 +48,7 @@ def plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name):
         plt.clf()
 
 
-def fft_process_subjects_data(subjects_trials_data, minus_fft_visualize=False):
+def fft_process_subjects_data(subjects_trials_data,feature_type, minus_fft_visualize=False):
     eeg_data = []
     eeg_label = []
 
@@ -57,18 +58,21 @@ def fft_process_subjects_data(subjects_trials_data, minus_fft_visualize=False):
         for record_index, record_data in subjects_data.items():  # record0
             for index in record_data['trials_data']:
                 if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
-                    subject_array = index['fft']
+                    if feature_type=='fft':
+                        subject_array = index['fft_baseline_removed']
+                    elif feature_type=='psd':
+                        subject_array = index['psd_baseline_removed']
                     eeg_data.append(subject_array)
                     if index['fatigue_level'] == 'high':
                         if minus_fft_visualize:
                             figure_name = key + "/" + key + "fft_high_" + str(high_num)
-                            plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name)
+                            plot_dataset_fft(subject_array, figure_name)
                             high_num += 1
                         eeg_label.append(0)
                     elif index['fatigue_level'] == 'low':
                         if minus_fft_visualize:
                             figure_name = key + "/" + key + "fft_low_" + str(low_num)
-                            plot_dataset_fft(subject_array, baseline_array, minus_array, figure_name)
+                            plot_dataset_fft(subject_array, figure_name)
                             low_num += 1
                         eeg_label.append(1)
 
@@ -89,13 +93,18 @@ def train_fft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_fft_mode
         fft_eeg_data = fft_eeg_data.reshape(fft_eeg_data.shape[0], input_shape[0], 1, input_shape[1])
         model.save_weights('init_model.hdf5')
     model.summary()
-    if minus_fft_mode == 0:
+    if minus_fft_mode == 1:
         acc_avl_file = 'fft_rawdata_acc_loss'
         confusion_file = 'fft_rawdata_confusion'
         model_file = 'fft_rawdata.h5'
-    elif minus_fft_mode == 1:
-        acc_avl_file = 'fft_norm_acc_loss'
-        confusion_file = 'fft_norm_confusion'
+    elif minus_fft_mode == 2:
+        acc_avl_file = '_mode5_fft_norm_acc_loss'
+        confusion_file = '_mode5_fft_norm_confusion'
+        model_file = 'fft_norm.h5'
+
+    elif minus_fft_mode == 5:
+        acc_avl_file = '_mode5_fft_norm_acc_loss'
+        confusion_file = '_mode5_fft_norm_confusion'
         model_file = 'fft_norm.h5'
 
     customCallback = plot_acc_val(name=acc_avl_file)
@@ -111,7 +120,7 @@ def train_fft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_fft_mode
         confusionMatrix.x_val = x_test
         confusionMatrix.y_val = y_test
         # confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=x_test, y_val=y_test, classes=2)
-        my_callbacks = [EarlyStopping(monitor="val_loss", patience=200),
+        my_callbacks = [EarlyStopping(monitor="val_loss", patience=50),
                         ModelCheckpoint(
                             filepath="./train_weight/" + model_file,
                             save_best_only=True, verbose=1),
@@ -132,41 +141,26 @@ def train_fft_data(fft_eeg_data, fft_eeg_label, model_mode='cnn', minus_fft_mode
     return k_fold_cross
 
 
-def process_inter_fft_subjects_data(subjects_trials_data, baseline_eeg, minus_fft_mode, high_fre=30,
-                                    sampling_rate=512):
+def process_inter_fft_subjects_data(subjects_trials_data, feature_type):
     eeg_data_output = {}
     eeg_label_output = {}
     for key, subjects_data in subjects_trials_data.items():
         eeg_data = []
         eeg_label = []
-        baseline_data = baseline_eeg[key]
-        for index in subjects_data:
-            if index['fatigue_level'] == 'high' or index['fatigue_level'] == 'low':
-                subject_array = index['eeg'].T
-                ################## FFT ####################
-                fft_array = [(abs(fft(i)) / sampling_rate)[:len(abs(fft(i))) // 2] for i in subject_array]
-                fft_array = np.array(fft_array).T
-                subject_array = fft_array[1:int((high_fre / (sampling_rate // 2)) * len(fft_array)), :]
-                #################### minus FFT mode ##########################
-                if minus_fft_mode == 0:  # data -baseline
-                    minus_subject_array = subject_array - baseline_data
-                elif minus_fft_mode == 1:  # (data -baseline) normalize
-                    minus_subject_array = subject_array - baseline_data
-                    for i in range(minus_subject_array.shape[1]):  # minus array normalize
-                        minus_subject_array[:, i] = normalize(minus_subject_array[:, i])
-                elif minus_fft_mode == 2:  # normalize data - normalize baseline
-                    for i in range(subject_array.shape[1]):  # normalize
-                        subject_array[:, i] = normalize(subject_array[:, i])
-                        baseline_data[:, i] = normalize(baseline_data[:, i])
-                    minus_subject_array = subject_array - baseline_data
-                #################################################################
-                if index['fatigue_level'] == 'high':
-                    eeg_data.append(minus_subject_array)  # tired
-                    eeg_label.append(0)
+        for record_index, record_data in subjects_data.items():  # record0
+            for index in record_data['trials_data']:
+                if index['fatigue_level'] != None:
+                    if feature_type == 'fft':
+                        subject_array = index['fft_baseline_removed'].T
+                    elif feature_type == 'psd':
+                        subject_array = index['psd_baseline_removed'].T
 
-                elif index['fatigue_level'] == 'low':
-                    eeg_data.append(minus_subject_array)  # good spirits
-                    eeg_label.append(1)
+                    eeg_data.append(subject_array)
+                    #################################################################
+                    if index['fatigue_level'] == 'high':
+                        eeg_label.append(0)  # tired
+                    elif index['fatigue_level'] == 'low':  # good spirits
+                        eeg_label.append(1)
         new_dict = {key: eeg_data}
         eeg_data_output.update(new_dict)
 
@@ -200,19 +194,24 @@ def train_inter_fft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn',
         x_train = x_train.reshape(x_train.shape[0], input_shape[0], 1, input_shape[1])
         x_test = x_test.reshape(x_test.shape[0], input_shape[0], 1, input_shape[1])
     model.summary()
-    if minus_fft_mode == 0:
+    if minus_fft_mode == 1:
         acc_avl_file = id + '_fft_rawdata_acc_loss'
         confusion_file = id + '_fft_rawdata_confusion'
         model_file = 'fft_rawdata.h5'
-    elif minus_fft_mode == 1:
+    elif minus_fft_mode == 2:
         acc_avl_file = id + '_fft_norm_acc_loss'
         confusion_file = id + '_fft_norm_confusion'
+        model_file = 'fft_norm.h5'
+
+    elif minus_fft_mode == 5:
+        acc_avl_file = id + '_mode5_fft_norm_acc_loss'
+        confusion_file = id + '_mode5_fft_norm_confusion'
         model_file = 'fft_norm.h5'
 
     customCallback = plot_acc_val(name=acc_avl_file)
     confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=x_test, y_val=y_test, classes=2)
 
-    my_callbacks = [EarlyStopping(monitor="val_loss", patience=200),
+    my_callbacks = [EarlyStopping(monitor="val_loss", patience=50),
                     ModelCheckpoint(filepath=("./train_weight/except_" + id + '_' + model_file),
                                     save_best_only=True, verbose=1),
                     customCallback,
@@ -225,6 +224,7 @@ def train_inter_fft_data(id, x_train, y_train, x_test, y_test, model_mode='cnn',
 
     return acc, loss
 
+
 if __name__ == '__main__':
     eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
                    "C4", "T8", "P3", "Pz", "P4", "P7", "P8", "Oz",
@@ -232,18 +232,19 @@ if __name__ == '__main__':
                    "FT8", "TP7", "CP3", "CPz", "CP4", "TP8", "O1", "O2"]
 
     ################### parameter #####################
-    feature_type = 'fft'
+    feature_type = 'fft' #fft or psd
     data_normalize = False
     get_middle_value = False
     baseline_stft_visualize = False
     all_pepeole = True  # True: 10-fold , False:用A訓練 B測試
     minus_fft_visualize = False
     fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
-    minus_fft_mode = 1  # 0: rawdata-baseline  1:(rawdata-baseline)normalize
+    minus_fft_mode = 1  # 1: rawdata-baseline  2:(rawdata-baseline)normalize
     selected_channels = None
     ######################### load rest data ################################
     loader = DatasetLoader()
-
+    loader.apply_bandpass_filter = True
+    loader.minus_mode = minus_fft_mode
     if data_normalize:
         loader.apply_signal_normalization = True
     else:
@@ -254,7 +255,7 @@ if __name__ == '__main__':
                                                    fatigue_basis=fatigue_basis,
                                                    selected_channels=selected_channels
                                                    )
-        stft_eeg_data, stft_eeg_label = fft_process_subjects_data(subjects_trials_data, minus_fft_visualize)
+        stft_eeg_data, stft_eeg_label = fft_process_subjects_data(subjects_trials_data,feature_type, minus_fft_visualize)
         np.save("./npy_file/10fold_fft_eeg_data.npy", stft_eeg_data)
         np.save("./npy_file/10fold_fft_eeg_label.npy", stft_eeg_label)
         start_time = time.time()
@@ -263,7 +264,9 @@ if __name__ == '__main__':
 
         print('Training Time: ' + str(end_time - start_time))
         print('mean accuracy:%.3f' % fittedModel["val_accuracy"].mean())
+        print(fittedModel["val_accuracy"].round(2))
         print('mean loss:%.3f' % fittedModel["val_loss"].mean())
+        print(fittedModel["val_loss"].round(2))
 
     else:  # train A, test B
         subject_ids = loader.get_subject_ids()
@@ -273,8 +276,7 @@ if __name__ == '__main__':
                                                    fatigue_basis=fatigue_basis,
                                                    selected_channels=selected_channels
                                                    )
-        test_fft_eeg_data, test_fft_eeg_label = process_inter_fft_subjects_data(subjects_trials_data,
-                                                                                  baseline_output, minus_fft_mode)
+        test_fft_eeg_data, test_fft_eeg_label = process_inter_fft_subjects_data(subjects_trials_data, feature_type)
 
         all_acc = []
         all_loss = []
@@ -297,6 +299,7 @@ if __name__ == '__main__':
             all_loss.append(loss)
         all_acc = np.array(all_acc)
         all_loss = np.array(all_loss)
-        print('mean acc: ' + str(all_acc.mean()))
-        print('mean loss: ' + str(all_loss.mean()))
-        a = 0
+        print('mean acc: ' + str(all_acc.mean().round(4)))
+        print(all_acc.round(2))
+        print('mean loss: ' + str(all_loss.mean().round(4)))
+        print(all_loss.round(2))

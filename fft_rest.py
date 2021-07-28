@@ -6,10 +6,10 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import optimizers
-from EEGModels import EEGNet, EEGNet_TINA_TEST, call_cnn_model
+from EEGModels import EEGNet
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from train_model import ConfusionMatrix
-from freqency_train import plot_acc_val
+from freqency_train import fft_call_cnn_model, normalize, plot_acc_val
 
 
 def normalize(array, normalization_mode='min_max'):
@@ -63,7 +63,7 @@ def train_FFT_data(X, Y, model_mode='cnn'):
     elif model_mode == 'cnn':
         x_train = x_train.reshape((x_train.shape[0], samples, 1, chans))  # [N data, 149,1,32]
         x_test = x_test.reshape((x_test.shape[0], samples, 1, chans))
-        model = call_cnn_model()
+        model = fft_call_cnn_model()
     opt = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
     # compile the model and set the optimizers
     model.compile(loss='categorical_crossentropy', optimizer=opt,
@@ -203,6 +203,9 @@ all_pepeole = False
 loader = DatasetLoader()
 loader.apply_bandpass_filter = False
 
+acc=[]
+loss=[]
+
 if all_pepeole:
     subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="time",
                                                fatigue_basis="by_feedback",
@@ -211,6 +214,11 @@ if all_pepeole:
     fft_eeg_data, fft_eeg_label = process_subjects_data(subjects_trials_data, baseline_output)
     np.save("./npy_file/fft_eeg_data.npy", fft_eeg_data)
     np.save("./npy_file/fft_eeg_label.npy", fft_eeg_label)
+    fittedModel = train_FFT_data(fft_eeg_data, fft_eeg_label)
+
+    print('best accuracy:%.3f' % max(fittedModel.history["val_accuracy"]))
+    print('best loss:%.3f' % min(fittedModel.history["val_loss"]))
+
 else:
     subject_ids = loader.get_subject_ids()
     for id in subject_ids:
@@ -220,7 +228,12 @@ else:
                                                    # selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"]
                                                    )
         fft_eeg_data, fft_eeg_label = process_subjects_data(subjects_trials_data, baseline_output)
+        fittedModel = train_FFT_data(fft_eeg_data, fft_eeg_label)
+        acc.append(round(max(fittedModel.history["val_accuracy"]), 2))
+        loss.append(round(min(fittedModel.history["val_loss"]), 2))
 
-# fittedModel = train_FFT_data(fft_eeg_data, fft_eeg_label)
+    print('mean accuracy:%.3f' % np.mean(np.array(acc)))
+    print(acc)
+    print('mean loss:%.3f' % np.mean(np.array(loss)))
+    print(loss)
 
-a = 0

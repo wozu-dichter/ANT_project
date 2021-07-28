@@ -129,7 +129,7 @@ class DatasetLoader:
         assert data_type in available_data_types, "data_type must be one of {}".format(available_data_types)
 
         # check feature_type
-        available_feature_types = ["time", "stft", "wavelet", "fft"]
+        available_feature_types = ["time", "stft", "wavelet", "fft", "psd"]
         assert feature_type in available_feature_types, "feature_type must be one of {}".format(available_feature_types)
 
         # check fatigue_basis
@@ -261,7 +261,7 @@ class DatasetLoader:
             self.__rt_normalization()
 
         # self.__rt_distribution_balance()
-        if self.feature_type in ["stft", "wavelet", "fft"]:
+        if self.feature_type in ["stft", "wavelet", "fft", "psd"]:
             self.__frequency_analysis()
             if self.apply_baseline_removal:
                 self.__baseline_preprocessing()
@@ -395,6 +395,21 @@ class DatasetLoader:
             self.__calculate_wavelet_spectrum()
         elif self.feature_type == "fft":
             self.__calculate_fft()
+        elif self.feature_type == "psd":
+            self.__calculate_psd()
+
+    def __calculate_psd(self):
+        for subject_id, records_data in self.subjects_data.items():
+            for record_id, record_data in records_data.items():
+                trials_data = record_data["trials_data"]
+                progressbar_prefix = "Calculating PSD, {}, {}".format(subject_id, record_id)
+                for trial_data in tqdm_info(trials_data, prefix=progressbar_prefix):
+                    psd_mc = []
+                    for eeg_sc in trial_data["eeg"].T:
+                        freqs, psd = welch(eeg_sc, fs=self.sample_rate, nperseg=self.sample_rate)
+                        psd_mc.append(psd)
+                    trial_data["psd"] = np.array(psd_mc).T
+
 
     def __calculate_stft_spectrum(self):
         for subject_id, records_data in self.subjects_data.items():
@@ -515,6 +530,8 @@ class DatasetLoader:
                             pass
                         elif self.feature_type == "fft":
                             cropped_sc = fft_abs_half(cropped_sc)
+                        elif self.feature_type == "psd":
+                            _, cropped_sc = welch(cropped_sc, fs=self.sample_rate, nperseg=self.sample_rate)
                         processed_mc.append(np.abs(cropped_sc))
                     baseline_feature_crops[nth_crop] = np.array(processed_mc)
                 record_data["baseline_data"]["averaged"] = np.mean(baseline_feature_crops, axis=0)
@@ -524,7 +541,7 @@ class DatasetLoader:
             for record_id, record_data in subject_data.items():
                 for trial_data in record_data["trials_data"]:
                     if self.feature_type == "fft":
-                        trial_data["stft_baseline_removed"] = minus_baseline_output(trial_data["fft"],
+                        trial_data["fft_baseline_removed"] = minus_baseline_output(trial_data["fft"],
                                                                                     record_data["baseline_data"][
                                                                                         "averaged"].T, self.minus_mode)
                     elif self.feature_type == "stft":
@@ -533,6 +550,10 @@ class DatasetLoader:
                                                                                         "averaged"].transpose(
                                                                                         [1, 2, 0]),
                                                                                     self.minus_mode)
+                    elif self.feature_type == "psd":
+                        trial_data["psd_baseline_removed"] = minus_baseline_output(trial_data["psd"],
+                                                                                    record_data["baseline_data"][
+                                                                                        "averaged"].T, self.minus_mode)
 
     def __data_augmentation(self):
         print_info("Before augmentation : {}".format(self.reformatted_data["train_y"].shape[0]))
@@ -601,10 +622,11 @@ class DatasetLoader:
                 x = np.array(
                     [trial_data["eeg"] for trial_data in trials_data if trial_data["fatigue_level"] in ["high", "low"]])
         elif self.feature_type == "stft":
-            x = np.array([trial_data["stft_spectrum"] for trial_data in trials_data])
+            x = np.array([trial_data["stft_baseline_removed"] for trial_data in trials_data])
         elif self.feature_type == "fft":
             x = np.array([trial_data["fft_baseline_removed"] for trial_data in trials_data])
-
+        elif self.feature_type == "psd":
+            x = np.array([trial_data["psd_baseline_removed"] for trial_data in trials_data])
         return x
 
     def __get_processed_y(self, trials_data):
@@ -638,7 +660,7 @@ def minus_baseline_output(input_eeg, baseline_eeg, minus_mode):
         print("not finiished")
     elif minus_mode == 4:
         print("not finiished")
-    elif minus_mode == 5:
+    elif minus_mode == 5:  # normalize used mean_norm
         minus_eeg_array = input_eeg - baseline_eeg
         minus_eeg_array = minus_eeg_array - np.mean(minus_eeg_array)
         return minus_eeg_array
@@ -697,7 +719,7 @@ def remove_outlier(array, ratio_threshold=0.5):
     n = 1.5
     outlier_filter_array = []
     for i_channel in range(array.shape[1]):
-        channel_array = array[:, i_channel, :]
+        channel_array = array[:, i_channel, :] #[N, 4]
         # IQR = Q3-Q1
         IQR = np.percentile(channel_array, 75, axis=0) - np.percentile(channel_array, 25, axis=0)
         # outlier = Q3 + n*IQR
@@ -714,7 +736,7 @@ def remove_outlier(array, ratio_threshold=0.5):
         normal_ratio = index_array.sum()/np.size(index_array)
         if normal_ratio<=ratio_threshold:
             outlier_index_array.append(index) # removed index
-    # print('removed data ratio:'+str(len(outlier_index_array))+'/60')  # print ratio:n/60
+    print('removed data ratio:'+str(len(outlier_index_array))+'/60')  # print ratio:n/60
     return np.array(outlier_index_array)
 
 
@@ -849,8 +871,8 @@ def plt_show_full_screen():
 if __name__ == "__main__":
     loader = DatasetLoader()
     subjects_data, reformatted_data = loader.load_data(data_type="rest",
-                                                       feature_type="stft",
-                                                       # single_subject="c95ths",
+                                                       feature_type="psd",
+                                                       single_subject="c95ths",
                                                        # selected_channels=["C3", "Cz", "C4"],
                                                        )
     print("Done")

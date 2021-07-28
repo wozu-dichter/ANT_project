@@ -20,6 +20,8 @@ def plot_baseline_stft(all_stft_array, t, f, subject_id):
 
 
 def plot_minus_stft(key, minus_subject_array, subject_array, baseline_eeg, num, get_middle_value):
+    t, f = 0, 0
+    print('not finish t , f in def plot_minus_stft')
     for i in range(minus_subject_array.shape[2]):
         plt.subplot(311)
         plt.pcolormesh(t, f, np.abs(subject_array[:, :, i]), vmin=-10, vmax=100, shading='auto')
@@ -56,6 +58,10 @@ def train_stft_data(reformatted_data, model_mode='cnn', minus_stft_mode=1, id=''
         acc_avl_file = id + '_stft_norm_acc_loss'
         confusion_file = id + '_stft_norm_confusion'
         model_file = id + '_stft_norm.h5'
+    elif minus_stft_mode == 5:
+        acc_avl_file = id + '_mode5_stft_norm_acc_loss'
+        confusion_file = id + 'mode5_stft_norm_confusion'
+        model_file = id + '_stft_norm.h5'
 
     customCallback = plot_acc_val(name=acc_avl_file)
     confusionMatrix = ConfusionMatrix(name=confusion_file, x_val=x_test, y_val=y_test, classes=2)
@@ -83,10 +89,10 @@ eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
 data_normalize = False
 get_middle_value = False
 baseline_stft_visualize = False
-all_pepeole = False
+all_pepeole = False # False : intra
 minus_stft_visualize = False
 fatigue_basis = 'by_feedback'  # 'by_time' or 'by_feedback'
-minus_stft_mode = 1  # 1: rawdata-baseline  2:(rawdata-baseline)normalize
+minus_stft_mode = 5  # 1: rawdata-baseline  2:(rawdata-baseline)normalize
 
 loader = DatasetLoader()
 loader.apply_bandpass_filter = True
@@ -113,8 +119,8 @@ if all_pepeole:
 
 else:
     subject_ids = loader.get_subject_ids()
-    acc=[]
-    loss=[]
+    acc = []
+    loss = []
     for id in subject_ids:
         subjects_trials_data, reformatted_data = loader.load_data(data_type="rest", feature_type="stft",
                                                                   single_subject=id,
@@ -122,15 +128,13 @@ else:
                                                                   # selected_channels=["C3", "C4", "P3", "Pz", "P4", "Oz"]
                                                                   )
         start_time = time.time()
-        fittedModel = train_stft_data(reformatted_data, minus_stft_mode=minus_stft_mode,model_mode='cnn', id=id)
+        fittedModel = train_stft_data(reformatted_data, minus_stft_mode=minus_stft_mode, model_mode='cnn', id=id)
         end_time = _time = time.time()
-        acc.append(round(max(fittedModel.history["val_accuracy"]),2))
-        loss.append(round(min(fittedModel.history["val_loss"]),2))
+        acc.append(round(max(fittedModel.history["val_accuracy"]), 2))
+        loss.append(round(min(fittedModel.history["val_loss"]), 2))
 
     print('Training Time: ' + str(end_time - start_time))
     print('mean accuracy:%.3f' % np.mean(np.array(acc)))
     print(acc)
     print('mean loss:%.3f' % np.mean(np.array(loss)))
     print(loss)
-
-

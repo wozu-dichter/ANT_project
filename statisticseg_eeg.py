@@ -5,7 +5,9 @@ import xlwt
 loader = DatasetLoader()
 loader.rest_signal_len = 300
 loader.apply_signal_normalization = False
-loader.apply_bandpass_filter = False
+loader.apply_bandpass_filter = True
+loader.feature_selection_mode = False
+
 subjects_trials_data, _ = loader.load_data(data_type="rest", feature_type="time",
                                            fatigue_basis="by_feedback")
 eeg_channel = ["Fp1", "Fp2", "F3", "Fz", "F4", "T7", "C3", "Cz",
@@ -31,24 +33,54 @@ for key in subject_ids:
     worksheet.write(0, 3, 'standard', style)  #
     worksheet.write(0, 4, 'Variance', style)
 
-    for eeg_array in subjects_trials_data[key]:
-        array = eeg_array['eeg']
-        if eeg_array['fatigue_level'] == 'high':
-            worksheet.write(0, 0, 'fatigue=high', style)
-            worksheet.col(0).width = 3333
-            print("key:{:s}, fatigue={:s}".format(key, str(eeg_array['fatigue_level'])))
-            for i_channel_array in range(array.shape[-1]):
-                worksheet.write(i_channel_array + 1, 0, eeg_channel[i_channel_array], style)
-                channel_array = array[:, i_channel_array]
-                amp = np.ptp(channel_array)
-                mean = np.mean(channel_array)
-                std = np.std(channel_array)
-                var = np.var(channel_array)
-                # print('channel:{:s}, mean={:.3f}, amplitude={:.3f}, standard={:.3f}'.format(
-                #     eeg_channel[i_channel_array], mean, amp, std))
-                worksheet.write(i_channel_array + 1, 1, str(mean), style)
-                worksheet.write(i_channel_array + 1, 2, str(amp), style)
-                worksheet.write(i_channel_array + 1, 3, str(std), style)
-                worksheet.write(i_channel_array + 1, 4, str(var), style)
-workbook.save('eeg_statist.xls')  # 儲存檔案
-a = 0
+    worksheet.write(0, 1+6, 'mean', style)  #
+    worksheet.write(0, 2+6, 'amplitude', style)  #
+    worksheet.write(0, 3+6, 'standard', style)  #
+    worksheet.write(0, 4+6, 'Variance', style)
+
+    high_array=[]
+    low_array=[]
+    for record_i, record_array in subjects_trials_data[key].items():
+        for trial_array in record_array['trials_data']:
+            array = trial_array['eeg']
+            if trial_array['fatigue_level'] == 'high':
+                high_array.extend(array)
+
+            elif trial_array['fatigue_level'] == 'low':
+                low_array.extend(array)
+
+    worksheet.write(0, 0, 'fatigue=high', style)
+    worksheet.col(0).width = 3333
+    worksheet.col(1).width = 7000
+    worksheet.col(1+6).width = 7000
+    print("key:{:s}".format(key))
+    for i_channel_array in range(np.array(high_array).shape[-1]):
+        worksheet.write(i_channel_array + 1, 0, eeg_channel[i_channel_array], style)
+        channel_array = np.array(high_array)[:, i_channel_array]
+        amp = np.ptp(channel_array)
+        mean = np.mean(channel_array)
+        std = np.std(channel_array)
+        var = np.var(channel_array)
+        # print('channel:{:s}, mean={:.3f}, amplitude={:.3f}, standard={:.3f}'.format(
+        #     eeg_channel[i_channel_array], mean, amp, std))
+        worksheet.write(i_channel_array + 1, 1, str(mean), style)
+        worksheet.write(i_channel_array + 1, 2, str(amp.round(2)), style)
+        worksheet.write(i_channel_array + 1, 3, str(std.round(2)), style)
+        worksheet.write(i_channel_array + 1, 4, str(var.round(2)), style)
+
+    worksheet.write(0, 6, 'fatigue=low', style)
+    for i_channel_array in range(np.array(low_array).shape[-1]):
+        worksheet.write(i_channel_array + 1, 0 + 6, eeg_channel[i_channel_array], style)
+        channel_array = np.array(low_array)[:, i_channel_array]
+        amp = np.ptp(channel_array)
+        mean = np.mean(channel_array)
+        std = np.std(channel_array)
+        var = np.var(channel_array)
+        # print('channel:{:s}, mean={:.3f}, amplitude={:.3f}, standard={:.3f}'.format(
+        #     eeg_channel[i_channel_array], mean, amp, std))
+        worksheet.write(i_channel_array + 1, 1 + 6, str(mean), style)
+        worksheet.write(i_channel_array + 1, 2 + 6, str(amp.round(2)), style)
+        worksheet.write(i_channel_array + 1, 3 + 6, str(std.round(2)), style)
+        worksheet.write(i_channel_array + 1, 4 + 6, str(var.round(2)), style)
+workbook.save('./train_weight/time_domain/eeg_statist.xls')  # 儲存檔案
+
